@@ -1,0 +1,1383 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>🐒 猴子射氣球 — 手語學習系統 v2.5.1</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap" rel="stylesheet">
+<!-- Firebase SDK -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getDatabase, ref, set, get, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+  const firebaseConfig = {
+    databaseURL: "https://word-420e5-default-rtdb.asia-southeast1.firebasedatabase.app/"
+  };
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+
+  // 將 Firebase 工具暴露到全域，讓主程式碼可以使用
+  window._fbDb = db;
+  window._fbRef = ref;
+  window._fbSet = set;
+  window._fbGet = get;
+  window._fbOnValue = onValue;
+  window._fbReady = true;
+  // 通知主程式 Firebase 已就緒
+  document.dispatchEvent(new Event('firebaseReady'));
+</script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0f0c29;font-family:'Nunito',sans-serif;display:flex;height:100vh;overflow:hidden;align-items:stretch}
+
+/* 頁面切換控制 */
+.page{display:none;width:100%;height:100%}
+.page.active{display:flex}
+
+/* ── 遊戲區 ── */
+#game-area{flex:1;display:flex;flex-direction:column;min-width:0;position:relative}
+#hud{display:flex;align-items:center;gap:16px;padding:8px 16px;background:rgba(10,8,40,0.9);border-bottom:1px solid rgba(255,215,0,0.2);flex-shrink:0}
+.hv{display:flex;flex-direction:column;align-items:center}
+.hl{font-size:10px;color:#888;letter-spacing:1px;text-transform:uppercase}
+.hd{font-size:22px;font-weight:900;color:#FFD700;line-height:1}
+#lives-el{font-size:18px;letter-spacing:2px;color:#FF6B6B}
+#combo-el{background:#FF6B6B;color:#fff;font-size:13px;font-weight:900;padding:3px 12px;border-radius:20px;display:none}
+#pause-bar{margin-left:auto;display:flex;gap:8px}
+.hbtn{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);color:#fff;padding:5px 14px;border-radius:8px;cursor:pointer;font-family:'Nunito',sans-serif;font-size:13px;font-weight:700;transition:background .15s}
+.hbtn:hover{background:rgba(255,255,255,0.15)}
+.hbtn.admin-btn{background:rgba(255,215,0,0.15);border-color:#FFD700;color:#FFD700}
+.hbtn.admin-btn:hover{background:rgba(255,215,0,0.3)}
+
+#cv-wrap{flex:1;position:relative;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+
+/* 🎯 右側即時學習提示面板 */
+#live-learning-box {
+  position: absolute; top: 16px; right: 16px; width: 240px;
+  background: rgba(8, 6, 30, 0.95); border: 3px solid #FFD700; border-radius: 12px;
+  padding: 16px; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+  display: none; z-index: 40; pointer-events: none; animation: slideIn 0.3s ease-out;
+}
+.ll-title { font-size: 12px; color: #FFD700; letter-spacing: 1px; margin-bottom: 4px; font-weight: 700; }
+.ll-emoji { font-size: 56px; line-height: 1; margin: 8px 0; }
+.ll-word { font-size: 26px; font-weight: 900; color: #fff; }
+.ll-tip { font-size: 11px; color: #aaa; margin-top: 6px; border-top: 1px dashed rgba(255,255,255,0.2); padding-top: 6px; }
+.ll-anykey { font-size: 12px; color: #FF6B6B; font-weight: 900; margin-top: 8px; animation: blink 1s infinite; }
+
+@keyframes slideIn { from { transform: translateX(30px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@keyframes blink { 50% { opacity: 0.3; } }
+
+/* 覆蓋層（開始與結束畫面） */
+#ov{position:absolute;inset:0;background:rgba(8,6,30,0.92);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:50}
+#ov h1{font-size:42px;font-weight:900;color:#FFD700;margin-bottom:6px}
+#ov .sub{color:#aaa;font-size:15px;margin-bottom:20px}
+.fscore{font-size:68px;font-weight:900;color:#fff;line-height:1}
+.flab{font-size:16px;color:#888;margin-bottom:20px}
+.gbtn{background:#FFD700;color:#0f0c29;font-family:'Nunito',sans-serif;font-size:17px;font-weight:900;padding:14px 40px;border:none;border-radius:30px;cursor:pointer;letter-spacing:.5px;transition:transform .15s,box-shadow .15s;margin-top:8px}
+.gbtn:hover{transform:scale(1.06);box-shadow:0 6px 24px rgba(255,215,0,.4)}
+.gbtn.preview-btn {background:#5B9FFF;color:#fff;margin-right:10px}
+.gbtn.preview-btn:hover {box-shadow:0 6px 24px rgba(91,159,255,.4)}
+
+/* 🃏 詞彙預習模式專用樣式 */
+#preview-overlay {
+  position: absolute; inset: 0; background: rgba(10,8,35,0.96);
+  display: none; flex-direction: column; align-items: center; justify-content: flex-start;
+  z-index: 60; padding: 30px 20px; overflow-y: auto;
+}
+.preview-header { text-align: center; margin-bottom: 20px; }
+.preview-header h2 { font-size: 32px; color: #FFD700; font-weight: 900; }
+.preview-header p { color: #aaa; font-size: 14px; margin-top: 5px; }
+.preview-toolbar { margin-bottom: 15px; display: flex; gap: 10px; }
+.tbtn { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; font-size: 12px; font-weight: 700; padding: 6px 14px; border-radius: 20px; cursor: pointer; transition: all 0.15s; }
+.tbtn:hover { background: #5B9FFF; border-color: #5B9FFF; }
+
+.card-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 16px; width: 100%; max-width: 800px; margin-bottom: 30px;
+}
+.flashcard {
+  height: 160px; background: #1a1640; border: 2px solid rgba(255,215,0,0.2);
+  border-radius: 12px; cursor: pointer; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; position: relative;
+  transition: transform 0.3s, border-color 0.3s, box-shadow 0.3s;
+  transform-style: preserve-3d; user-select: none;
+}
+.flashcard:hover { transform: translateY(-5px); border-color: #FFD700; box-shadow: 0 5px 15px rgba(255,215,0,0.15); }
+.flashcard .c-emoji { font-size: 48px; margin-bottom: 8px; }
+.flashcard .c-word { font-size: 20px; font-weight: 900; color: #fff; transition: opacity 0.2s; }
+.flashcard .c-cat { position: absolute; top: 6px; left: 8px; font-size: 10px; color: #888; background: rgba(0,0,0,0.2); padding: 2px 6px; border-radius: 8px; }
+.flashcard.flipped .c-word { opacity: 0.08; background: rgba(255,255,255,0.1); border-radius: 4px; color: transparent; text-shadow: 0 0 8px rgba(255,255,255,0.5); }
+.flashcard.flipped::after {
+  content: '點擊翻開'; position: absolute; bottom: 12px; font-size: 11px;
+  color: #FFD700; font-weight: 700; background: rgba(255,215,0,0.1); padding: 2px 8px; border-radius: 10px;
+}
+
+/* 結算畫面弱點複習樣式 */
+.review-container { background: rgba(255,255,255,0.05); border-radius: 8px; padding: 12px; margin: 14px 0; max-width: 400px; width: 90%; text-align: left; }
+.review-title { font-size: 13px; color: #FF6B6B; font-weight: 700; margin-bottom: 6px; }
+.review-list { font-size: 14px; color: #ddd; max-height: 80px; overflow-y: auto; line-height: 1.5; }
+
+/* ── 側邊控制台 ── */
+#panel{width:260px;flex-shrink:0;background:rgba(8,6,30,0.95);border-left:1px solid rgba(255,215,0,0.15);display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden}
+.pt{font-size:11px;font-weight:900;color:#FFD700;letter-spacing:2px;padding:12px 14px 6px;text-transform:uppercase;border-bottom:1px solid rgba(255,215,0,0.1);flex-shrink:0}
+.ps{padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.06)}
+.pl{font-size:11px;color:#888;margin-bottom:5px;letter-spacing:.5px}
+select,input[type=range],input[type=text],input[type=number]{width:100%;accent-color:#FFD700;margin-bottom:4px}
+select,input[type=text],input[type=number]{background:#1a1640;color:#ffffff;border:1px solid rgba(255,215,0,0.35);padding:5px 8px;border-radius:6px;font-family:'Nunito',sans-serif;font-size:13px}
+input::placeholder {color:rgba(255,255,255,0.45)}
+.rrow{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#aaa;margin-bottom:2px}
+.pbtn{width:100%;background:rgba(255,215,0,0.12);border:1px solid rgba(255,215,0,0.3);color:#FFD700;font-family:'Nunito',sans-serif;font-size:13px;font-weight:700;padding:7px;border-radius:8px;cursor:pointer;margin-top:4px;transition:background .15s}
+.pbtn:hover{background:rgba(255,215,0,0.22)}
+#log-box{flex:1;padding:8px 14px;overflow-y:auto;min-height:80px}
+.log-row{font-size:11px;color:#aaa;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.04);line-height:1.4}
+.log-row .tag{font-weight:900;margin-right:4px}
+.tag-hit{color:#4CAF50}
+.tag-esc{color:#FF6B6B}
+.tag-sys{color:#5B9FFF}
+#cat-wrap{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.cat-pill{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);color:#ccc;font-size:11px;padding:3px 8px;border-radius:12px;cursor:pointer;transition:all .15s;user-select:none}
+.cat-pill.on{background:rgba(255,215,0,0.2);border-color:rgba(255,215,0,0.5);color:#FFD700}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:4px}
+.stat-cell{background:rgba(255,255,255,0.05);border-radius:8px;padding:8px;text-align:center}
+.stat-n{font-size:18px;font-weight:900;color:#fff}
+.stat-l{font-size:10px;color:#666;margin-top:1px}
+
+/* ── 後端管理介面 ── */
+#admin-page{background:#0a0828;color:#fff;padding:20px;flex-direction:column;overflow-y:auto}
+.admin-header{display:flex;align-items:center;border-bottom:2px solid rgba(255,215,0,0.3);padding-bottom:15px;margin-bottom:20px;flex-wrap:wrap;gap:15px;justify-content:space-between}
+.admin-title{font-size:24px;font-weight:900;color:#FFD700}
+.admin-grid{display:grid;grid-template-columns:320px 1fr;gap:20px;align-items:start}
+@media(max-width:900px){.admin-grid{grid-template-columns:1fr}}
+.admin-box{background:rgba(255,255,255,0.04);border:1px solid rgba(255,215,0,0.15);border-radius:12px;padding:16px;margin-bottom:15px}
+.admin-box h3{font-size:16px;color:#FFD700;margin-bottom:12px;border-bottom:1px dashed rgba(255,215,0,0.2);padding-bottom:6px}
+.form-group{margin-bottom:12px}
+.form-group label{display:block;font-size:12px;color:#aaa;margin-bottom:4px}
+.inline-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.adm-select-input{width:100%;background:#1a1640;color:#fff;border:1px solid rgba(255,215,0,0.35);padding:6px;border-radius:6px}
+.abtn{padding:6px 14px;font-size:12px;font-weight:700;border-radius:6px;cursor:pointer;border:none;font-family:'Nunito',sans-serif;transition:background .15s}
+.abtn-primary{background:#FFD700;color:#0f0f29}
+.abtn-primary:hover{background:#ffea6c}
+.abtn-danger{background:#FF6B6B;color:#fff}
+.abtn-danger:hover{background:#ff8787}
+.abtn-edit{background:#5B9FFF;color:#fff;margin-right:4px}
+.abtn-edit:hover{background:#7cb3ff}
+.abtn-close{background:rgba(255,255,255,0.1);color:#fff;border:1px solid rgba(255,255,255,0.2);font-size:14px;padding:8px 16px}
+.abtn-close:hover{background:rgba(255,255,255,0.2)}
+.admin-cat-manage-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.admin-cat-tag{background:rgba(255,215,0,0.08);border:1px solid rgba(255,215,0,0.25);color:#FFD700;font-size:11px;padding:2px 6px;border-radius:4px;display:inline-flex;align-items:center;gap:4px}
+.admin-cat-del-btn{background:none;border:none;color:#FF6B6B;cursor:pointer;font-weight:900;font-size:10px}
+.category-container-list{display:grid;grid-template-columns:1fr;gap:15px}
+@media(min-width:1200px){.category-container-list{grid-template-columns:1fr 1fr}}
+.category-card-box{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:12px;box-shadow:0 4px 12px rgba(0,0,0,0.15)}
+.category-card-header{display:flex;margin-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.06);padding-bottom:4px;justify-content:space-between;align-items:center}
+.category-card-title{font-size:14px;font-weight:900;color:#FFD700}
+.category-card-badge{font-size:11px;background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:10px;color:#ccc}
+.word-table{width:100%;border-collapse:collapse;text-align:left}
+.word-table th{font-size:11px;color:#888;padding:6px 4px;border-bottom:1px solid rgba(255,255,255,0.1)}
+.word-table td{font-size:13px;padding:6px 4px;border-bottom:1px solid rgba(255,255,255,0.04);vertical-align:middle}
+
+/* 🆕 批量控制懸浮工具列 */
+#batch-toolbar {
+  position: fixed; bottom: 20px; right: 20px; left: 360px;
+  background: #110e3d; border: 2px solid #FFD700; box-shadow: 0 4px 25px rgba(0,0,0,0.7);
+  border-radius: 12px; padding: 12px 24px; display: none; align-items: center;
+  justify-content: space-between; z-index: 100; animation: slideUp 0.25s ease-out;
+}
+@media(max-width:900px){ #batch-toolbar { left: 20px; } }
+.batch-info { font-size: 14px; color: #fff; font-weight: 700; }
+.batch-info span { color: #FFD700; font-size: 18px; margin: 0 4px; }
+.batch-actions { display: flex; align-items: center; gap: 12px; }
+@keyframes slideUp { from { transform: translateY(40px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+/* 勾選框美化微調 */
+input[type=checkbox].adm-box-cb {
+  width: 16px; height: 16px; accent-color: #FFD700; cursor: pointer; vertical-align: middle;
+}
+</style>
+</head>
+<body>
+
+<div id="play-page" class="page active">
+  <div id="game-area">
+    <div id="hud">
+      <div class="hv"><span class="hl">SCORE</span><span class="hd" id="sc-el">0</span></div>
+      <div class="hv"><span class="hl">COMBO</span><span id="combo-el">x1</span></div>
+      <div class="hv"><span class="hl">TIME LEFT</span><span class="hd" style="color:#5B9FFF"><span id="tm-el">60</span>s</span></div>
+      <div class="hv"><span class="hl">MONKEY LIVES</span><span id="lives-el">❤❤❤</span></div>
+      <div id="pause-bar">
+        <button class="hbtn" id="pp-btn" onclick="togglePause()">⏸ 暫停</button>
+        <button class="hbtn" onclick="panelReset()">🔄 重置</button>
+        <button class="hbtn admin-btn" onclick="switchPage('admin')">⚙️ 詞彙資料庫管理後台</button>
+      </div>
+    </div>
+    <div id="cv-wrap">
+      <canvas id="cv"></canvas>
+      
+      <div id="preview-overlay">
+        <div class="preview-header">
+          <h2>🃏 本局詞彙預習卡片</h2>
+          <p>點擊個別卡牌或使用下方工具列一鍵切換，配合手語教材進行記憶預習吧！</p>
+        </div>
+        
+        <div class="preview-toolbar">
+          <button class="tbtn" onclick="flipAllCards(true)">👁️ 全部蓋牌 (開啟盲測)</button>
+          <button class="tbtn" onclick="flipAllCards(false)">🔓 全部翻開 (顯示中文)</button>
+        </div>
+
+        <div class="card-grid" id="preview-card-grid"></div>
+        <div>
+          <button class="gbtn" style="background: rgba(255,255,255,0.15); color: #fff; margin-right: 12px;" onclick="closePreview()">⬅ 返回主選單</button>
+          <button class="gbtn" onclick="closePreview(); startGame();">🚀 預習完畢，直接開戰！</button>
+        </div>
+      </div>
+      
+      <div id="live-learning-box">
+        <div class="ll-title">✨ 擊中詞彙 ✨</div>
+        <div class="ll-emoji" id="ll-em">🍎</div>
+        <div class="ll-word" id="ll-wd">蘋果</div>
+        <div class="ll-tip">請一邊看著字卡，一邊試著比出此手語！</div>
+        <div class="ll-anykey">👉 按「鍵盤任意鍵」或「滑鼠點擊」繼續</div>
+      </div>
+
+      <div id="ov">
+        <h1>🐒 猴子射氣球</h1>
+        <p class="sub">射中氣球，學習手語！</p>
+        <p style="color:#666;font-size:12px;margin-bottom:20px">W / S / A / D 或 方向鍵 移動猴子 &nbsp;|&nbsp; 滑鼠點擊射飛鏢</p>
+        <div>
+          <button class="gbtn preview-btn" onclick="openPreview()">🃏 預習本次詞彙</button>
+          <button class="gbtn" id="main-btn" onclick="isWeaknessMode=false; startGame();">直接開始遊戲</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <div id="panel">
+    <div class="pt">⚙️ 遊戲自訂控制面板</div>
+    <div class="ps">
+      <div class="pl">難度模式連動預設</div>
+      <select id="diff-sel" onchange="applyDiff()">
+        <option value="easy">簡單模式 (慢速/長時/多命)</option>
+        <option value="normal" selected>普通模式 (標準設定)</option>
+        <option value="hard">困難模式 (快速/高壓挑戰)</option>
+        <option value="extreme">極限模式 (一觸即死狂暴)</option>
+      </select>
+    </div>
+    <div class="ps">
+      <div class="rrow"><span>氣球上升速度</span><span id="spd-val" style="color:#fff;font-weight:700">1.0x</span></div>
+      <input type="range" id="spd-sl" min="3" max="35" value="10" oninput="updateSpeed(this.value)">
+    </div>
+    <div class="ps">
+      <div class="rrow"><span>⏳ 遊戲時間限制</span><span id="tm-val" style="color:#5B9FFF;font-weight:700">60s</span></div>
+      <input type="range" id="tm-sl" min="10" max="300" value="60" step="5" oninput="updateTime(this.value)">
+    </div>
+    <div class="ps">
+      <div class="rrow"><span>❤️ 猴子初始生命數</span><span id="lives-val" style="color:#FF6B6B;font-weight:700">3 個</span></div>
+      <input type="range" id="lives-sl" min="1" max="10" value="3" step="1" oninput="updateLivesCfg(this.value)">
+    </div>
+    <div class="ps">
+      <div class="rrow"><span>🎈 每秒鐘氣球輸出總數</span><span id="bps-val" style="color:#4BC97A;font-weight:700">1.5 顆/秒</span></div>
+      <input type="range" id="bps-sl" min="0.5" max="5.0" value="1.5" step="0.1" oninput="updateBalloonRate(this.value)">
+    </div>
+    <div class="ps">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#aaa;cursor:pointer;user-select:none">
+        <input type="checkbox" id="show-text-cb" checked onchange="toggleTextVisibility()" style="width:auto;margin:0;accent-color:#FFD700"> 
+        顯示氣球中中文 (取消勾選即開啟盲測)
+      </label>
+    </div>
+    <div class="pt" style="padding-top:10px">📁 出現詞彙類別篩選</div>
+    <div class="ps" style="border-bottom:none"><div id="cat-wrap"></div></div>
+    <div class="pt" style="padding-top:10px">📊 歷史數據統計</div>
+    <div class="ps">
+      <div class="stat-grid">
+        <div class="stat-cell"><span class="stat-n" id="st-games">0</span><div class="stat-l">總場次</div></div>
+        <div class="stat-cell"><span class="stat-n" id="st-hi">0</span><div class="stat-l">最高分</div></div>
+        <div class="stat-cell"><span class="stat-n" id="st-hits">0</span><div class="stat-l">命中數</div></div>
+        <div class="stat-cell"><span class="stat-n" id="st-esc">0</span><div class="stat-l">逃脫數</div></div>
+      </div>
+    </div>
+    <div class="pt" style="padding-top:10px">📋 即時紀錄</div>
+    <div id="log-box"></div>
+  </div>
+</div>
+
+<div id="admin-page" class="page">
+  <div class="admin-header">
+    <div class="admin-title">⚙️ 獨立後端詞彙資料庫管理系統</div>
+    <div style="font-size:16px; color:#dddddd; font-weight:700;">目前詞彙總數：<span id="total-words-count" style="color:#FFD700; font-size:20px;">0</span></div>
+    <button class="abtn abtn-close" onclick="switchPage('play')">❌ 關閉後端並返回遊戲</button>
+  </div>
+  <div id="enabled-status-bar" style="display:none; align-items:center; flex-wrap:wrap; gap:8px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:10px 16px; margin-bottom:16px; font-size:13px;"></div>
+  
+  <div class="admin-grid">
+    <div class="admin-left-panels">
+      <div class="admin-box">
+        <h3>📁 詞彙類別增減管理</h3>
+        <div class="form-group" style="display:flex; gap:6px; margin-bottom:10px;">
+          <input type="text" id="new-cat-input" placeholder="輸入要新增的類別名稱">
+          <button class="abtn abtn-primary" onclick="addCategory()" style="padding:0 14px; flex-shrink:0;">新增</button>
+        </div>
+        <div class="form-group">
+          <label>目前已有類別清單 (點擊 ✖ 可刪除類別)：</label>
+          <div class="admin-cat-manage-list" id="admin-cat-list"></div>
+        </div>
+      </div>
+
+      <div class="admin-box">
+        <h3 id="form-title">➕ 新增 / 修改詞彙</h3>
+        <input type="hidden" id="edit-idx" value="-1">
+        <div class="form-group">
+          <label>詞彙名稱</label>
+          <input type="text" id="adm-word" placeholder="例如：謝謝">
+        </div>
+        <div class="form-group inline-grid">
+          <div>
+            <label>表情圖示 (Emoji)</label>
+            <input type="text" id="adm-emoji" placeholder="🙏">
+          </div>
+          <div>
+            <label>得分點數</label>
+            <input type="number" id="adm-points" value="15" min="1">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>選擇詞彙類別</label>
+          <select id="adm-cat" class="adm-select-input"></select>
+        </div>
+        <div style="margin-top:20px; display:flex; gap:10px;">
+          <button class="abtn abtn-primary" id="save-btn" onclick="saveWord()" style="flex:1; padding:12px;">儲存變更</button>
+          <button class="abtn" id="cancel-btn" onclick="resetAdminForm()" style="display:none;">取消編輯</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="admin-box" style="background:transparent; border:none; padding:0;">
+      <h3 style="border-bottom:none; margin-bottom:10px; font-size:20px; color:#ffffff;">📋 詞彙分類總覽</h3>
+      <div class="category-container-list" id="category-box-list"></div>
+    </div>
+  </div>
+
+  <div id="batch-toolbar">
+    <div class="batch-info">已選取 <span id="batch-count">0</span> 個詞彙</div>
+    <div class="batch-actions">
+      <span style="font-size: 13px; color: #aaa;">批量搬移至：</span>
+      <select id="batch-move-cat" style="width: 140px; margin-bottom: 0; padding: 4px 8px;"></select>
+      <button class="abtn abtn-edit" onclick="batchMoveCategory()" style="margin-right: 15px;">執行搬移</button>
+      <button class="abtn" style="background:#4CAF50;color:#fff;" onclick="applySelectedToGame()">✅ 套用選取詞彙進入遊戲</button>
+      <button class="abtn abtn-danger" onclick="batchDeleteWords()">🗑️ 批量刪除選取項</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+let W, H;
+
+function resize() {
+  const wrap = document.getElementById('cv-wrap');
+  if(!wrap) return;
+  W = wrap.clientWidth || window.innerWidth - 260; // 備用安全寬度
+  H = wrap.clientHeight || window.innerHeight - 50; // 備用安全高度
+  cv.width = W;
+  cv.height = H;
+}
+
+// 首次加載與監聽
+resize();
+window.addEventListener('resize', resize);
+// 增加安全延遲，防止某些瀏覽器載入時 DOM 元件尚未穩定計算完畢
+setTimeout(resize, 100);
+
+const DEFAULT_WORDS = [
+  {word:'蘋果',emoji:'🍎',category:'食物',points:10},
+  {word:'香蕉',emoji:'🍌',category:'食物',points:10},
+  {word:'水',emoji:'💧',category:'食物',points:10},
+  {word:'你好',emoji:'👋',category:'問候',points:15},
+  {word:'謝謝',emoji:'🙏',category:'問候',points:15},
+  {word:'再見',emoji:'✌️',category:'問候',points:15},
+  {word:'對不起',emoji:'🙇',category:'問候',points:18},
+  {word:'愛',emoji:'❤️',category:'情感',points:20},
+  {word:'快樂',emoji:'😊',category:'情感',points:18},
+  {word:'悲傷',emoji:'😢',category:'情感',points:18},
+  {word:'太陽',emoji:'☀️',category:'自然',points:10},
+  {word:'月亮',emoji:'🌙',category:'自然',points:10},
+  {word:'花',emoji:'🌸',category:'自然',points:10},
+  {word:'星星',emoji:'⭐',category:'自然',points:12},
+  {word:'彩虹',emoji:'🌈',category:'自然',points:20},
+  {word:'貓',emoji:'🐱',category:'動物',points:12},
+  {word:'狗',emoji:'🐶',category:'動物',points:12},
+  {word:'魚',emoji:'🐟',category:'動物',points:12},
+  {word:'書',emoji:'📚',category:'學習',points:15},
+  {word:'學校',emoji:'🏫',category:'學習',points:15},
+  {word:'家',emoji:'🏠',category:'日常',points:12},
+  {word:'跑步',emoji:'🏃',category:'動作',points:20},
+  {word:'吃飯',emoji:'🍚',category:'動作',points:15},
+  {word:'睡覺',emoji:'😴',category:'動作',points:15},
+  {word:'音樂',emoji:'🎵',category:'藝術',points:18},
+  {word:'朋友',emoji:'🤝',category:'社交',points:20},
+  {word:'數字1',emoji:'☝️',category:'數字',points:8},
+  {word:'數字2',emoji:'✌️',category:'數字',points:8},
+  {word:'數字3',emoji:'🤟',category:'數字',points:8},
+  {word:'飛機',emoji:'✈️',category:'交通',points:15},
+];
+const DEFAULT_CATEGORIES = ['食物', '問候', '情感', '自然', '動物', '學習', '日常', '動作', '藝術', '社交', '數字', '交通', '未分類'];
+
+let ALL_WORDS = JSON.parse(localStorage.getItem('sf_words')) || DEFAULT_WORDS;
+let SYSTEM_CATEGORIES = JSON.parse(localStorage.getItem('sf_categories')) || DEFAULT_CATEGORIES;
+let stats = JSON.parse(localStorage.getItem('sf_stats')) || { games:0, hi:0, hits:0, esc:0 };
+
+let activeCategories = new Set();
+let currentSessionMissed = new Set();
+let isWeaknessMode = false;
+let isHitPaused = false; 
+
+let selectedWordIndexes = new Set();
+let enabledWordIndexes = JSON.parse(localStorage.getItem('sf_enabled_indexes')) || null;
+
+// ── 雲端同步狀態指示器 ──
+(function createSyncIndicator() {
+  const el = document.createElement('div');
+  el.id = 'sync-indicator';
+  el.style.cssText = 'position:fixed;bottom:10px;left:10px;z-index:9999;font-size:11px;font-family:Nunito,sans-serif;font-weight:700;padding:4px 10px;border-radius:20px;transition:all .3s;pointer-events:none;';
+  el.textContent = '☁️ 連線中...';
+  el.style.background = 'rgba(91,159,255,0.2)';
+  el.style.color = '#5B9FFF';
+  el.style.border = '1px solid rgba(91,159,255,0.4)';
+  document.body.appendChild(el);
+})();
+
+function setSyncStatus(status) {
+  const el = document.getElementById('sync-indicator');
+  if (!el) return;
+  if (status === 'saving') {
+    el.textContent = '☁️ 同步中...';
+    el.style.background = 'rgba(255,215,0,0.15)'; el.style.color = '#FFD700'; el.style.border = '1px solid rgba(255,215,0,0.3)';
+  } else if (status === 'saved') {
+    el.textContent = '✅ 雲端已同步';
+    el.style.background = 'rgba(76,175,80,0.15)'; el.style.color = '#4CAF50'; el.style.border = '1px solid rgba(76,175,80,0.3)';
+    setTimeout(() => setSyncStatus('idle'), 2500);
+  } else if (status === 'error') {
+    el.textContent = '⚠️ 雲端同步失敗（已存本地）';
+    el.style.background = 'rgba(255,107,107,0.15)'; el.style.color = '#FF6B6B'; el.style.border = '1px solid rgba(255,107,107,0.3)';
+  } else {
+    el.textContent = '☁️ 雲端已連線';
+    el.style.background = 'rgba(76,175,80,0.08)'; el.style.color = '#4CAF50'; el.style.border = '1px solid rgba(76,175,80,0.2)';
+  }
+}
+
+// ── 資料儲存（本地 + 雲端） ──
+function saveToLocalStorage() {
+  // 1. 永遠先存本地，確保離線也能用
+  localStorage.setItem('sf_words', JSON.stringify(ALL_WORDS));
+  localStorage.setItem('sf_categories', JSON.stringify(SYSTEM_CATEGORIES));
+  localStorage.setItem('sf_stats', JSON.stringify(stats));
+  if (enabledWordIndexes !== null) {
+    localStorage.setItem('sf_enabled_indexes', JSON.stringify(enabledWordIndexes));
+  } else {
+    localStorage.removeItem('sf_enabled_indexes');
+  }
+  // 2. 非同步推送到 Firebase
+  saveToFirebase();
+}
+
+async function saveToFirebase() {
+  if (!window._fbReady) return;
+  setSyncStatus('saving');
+  try {
+    const db = window._fbDb, fbRef = window._fbRef, fbSet = window._fbSet;
+    const payload = {
+      words: ALL_WORDS,
+      categories: SYSTEM_CATEGORIES,
+      stats: stats,
+      enabledIndexes: enabledWordIndexes !== null ? enabledWordIndexes : null,
+      lastUpdated: Date.now()
+    };
+    await fbSet(fbRef(db, 'gameData'), payload);
+    setSyncStatus('saved');
+  } catch (e) {
+    console.warn('Firebase 同步失敗：', e);
+    setSyncStatus('error');
+  }
+}
+
+// ── 從 Firebase 載入資料（頁面初始化時） ──
+async function loadFromFirebase() {
+  if (!window._fbReady) return;
+  try {
+    const db = window._fbDb, fbRef = window._fbRef, fbGet = window._fbGet;
+    const snapshot = await fbGet(fbRef(db, 'gameData'));
+    if (snapshot.exists()) {
+      const data = snapshot.val();
+      if (Array.isArray(data.words) && data.words.length > 0) {
+        ALL_WORDS = data.words;
+        localStorage.setItem('sf_words', JSON.stringify(ALL_WORDS));
+      }
+      if (Array.isArray(data.categories) && data.categories.length > 0) {
+        SYSTEM_CATEGORIES = data.categories;
+        localStorage.setItem('sf_categories', JSON.stringify(SYSTEM_CATEGORIES));
+      }
+      if (data.stats) {
+        stats = data.stats;
+        localStorage.setItem('sf_stats', JSON.stringify(stats));
+      }
+      enabledWordIndexes = data.enabledIndexes || null;
+      if (enabledWordIndexes !== null) {
+        localStorage.setItem('sf_enabled_indexes', JSON.stringify(enabledWordIndexes));
+      } else {
+        localStorage.removeItem('sf_enabled_indexes');
+      }
+      // 更新 UI
+      rebuildCategoryPills();
+      updStats();
+      setSyncStatus('idle');
+      addLog('sys', '☁️ 已從雲端同步最新詞彙資料庫');
+    } else {
+      // Firebase 是空的，把本地資料推上去
+      await saveToFirebase();
+      addLog('sys', '☁️ 已將本地資料初始化上傳至雲端');
+    }
+  } catch (e) {
+    console.warn('Firebase 讀取失敗，使用本地資料：', e);
+    setSyncStatus('error');
+  }
+}
+
+// 等待 Firebase 就緒後載入雲端資料
+if (window._fbReady) {
+  loadFromFirebase();
+} else {
+  document.addEventListener('firebaseReady', loadFromFirebase);
+}
+
+function switchPage(pageId) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  if(pageId === 'admin') {
+    if(game.running && !cfg.paused) togglePause();
+    document.getElementById('admin-page').classList.add('active');
+    selectedWordIndexes.clear();
+    renderAdminTable();
+  } else {
+    document.getElementById('play-page').classList.add('active');
+    resize();
+  }
+}
+
+function rebuildCategoryPills() {
+  const catWrap = document.getElementById('cat-wrap');
+  if(!catWrap) return;
+  catWrap.innerHTML = '';
+  const usedCats = SYSTEM_CATEGORIES.filter(c => ALL_WORDS.some(w => w.category === c));
+  const oldActive = new Set(activeCategories);
+  activeCategories.clear();
+  
+  usedCats.forEach(c => {
+    if (oldActive.size === 0 || oldActive.has(c)) {
+      activeCategories.add(c);
+    }
+    const p = document.createElement('span');
+    p.className = 'cat-pill' + (activeCategories.has(c) ? ' on' : '');
+    p.textContent = c;
+    p.onclick = () => {
+      if(isWeaknessMode) {
+        isWeaknessMode = false;
+        addLog('sys', '已手動切換類別，自動離開弱點特訓模式。');
+      }
+      if (activeCategories.has(c)) {
+        if (activeCategories.size <= 1) return;
+        activeCategories.delete(c);
+        p.classList.remove('on');
+      } else {
+        activeCategories.add(c);
+        p.classList.add('on');
+      }
+    };
+    catWrap.appendChild(p);
+  });
+}
+
+function addCategory() {
+  const input = document.getElementById('new-cat-input');
+  const catName = input.value.trim();
+  if(!catName) { alert('請輸入類別名稱！'); return; }
+  if(SYSTEM_CATEGORIES.includes(catName)) { alert('此類別已存在！'); return; }
+  SYSTEM_CATEGORIES.push(catName);
+  input.value = '';
+  addLog('sys', `新增類別：「${catName}」`);
+  saveToLocalStorage();
+  renderAdminTable();
+}
+
+function deleteCategory(catName) {
+  if(catName === '未分類') { alert('「未分類」為系統核心預留空間，不可刪除！'); return; }
+  const linkedWords = ALL_WORDS.filter(w => w.category === catName);
+  let confirmMsg = `確定要刪除「${catName}」類別嗎？`;
+  if(linkedWords.length > 0) {
+    confirmMsg = `「${catName}」類別內目前包含 ${linkedWords.length} 個單字，若刪除該類別，這些單字將會自動被歸類到【未分類】中。\n\n確認移除此類別嗎？`;
+  }
+  if(confirm(confirmMsg)) {
+    ALL_WORDS.forEach(w => { if(w.category === catName) w.category = '未分類'; });
+    SYSTEM_CATEGORIES = SYSTEM_CATEGORIES.filter(c => c !== catName);
+    addLog('sys', `刪下了類別：「${catName}」`);
+    selectedWordIndexes.clear();
+    saveToLocalStorage();
+    renderAdminTable();
+  }
+}
+
+function renderAdminTable() {
+  const containerList = document.getElementById('category-box-list');
+  const totalCountEl = document.getElementById('total-words-count');
+  const selectDropdown = document.getElementById('adm-cat');
+  const batchSelectDropdown = document.getElementById('batch-move-cat');
+  const catListWrap = document.getElementById('admin-cat-list');
+  
+  if(!containerList) return;
+  containerList.innerHTML = '';
+  totalCountEl.textContent = ALL_WORDS.length;
+  
+  catListWrap.innerHTML = SYSTEM_CATEGORIES.map(c => `
+    <span class="admin-cat-tag">
+      ${c}
+      ${c !== '未分類' ? `<button class="admin-cat-del-btn" onclick="deleteCategory('${c}')" title="刪除此類別">✖</button>` : ''}
+    </span>
+  `).join('');
+
+  const prevSelected = selectDropdown.value;
+  selectDropdown.innerHTML = SYSTEM_CATEGORIES.map(c => `<option value="${c}">${c}</option>`).join('');
+  if (SYSTEM_CATEGORIES.includes(prevSelected)) selectDropdown.value = prevSelected;
+
+  batchSelectDropdown.innerHTML = SYSTEM_CATEGORIES.map(c => `<option value="${c}">${c}</option>`).join('');
+
+  SYSTEM_CATEGORIES.forEach(catName => {
+    const catWords = ALL_WORDS.map((w, idx) => ({ ...w, originalIndex: idx })).filter(w => w.category === catName);
+    if(catWords.length === 0 && catName === '未分類') return; 
+
+    const isAllGroupChecked = catWords.length > 0 && catWords.every(item => selectedWordIndexes.has(item.originalIndex));
+
+    const card = document.createElement('div');
+    card.className = 'category-card-box';
+    card.innerHTML = `
+      <div class="category-card-header">
+        <div class="category-card-title">📁 類別：${catName}</div>
+        <div class="category-card-badge">共 ${catWords.length} 個單字</div>
+      </div>
+      <table class="word-table">
+        <thead>
+          <tr>
+            <th style="width: 35px; text-align: center;">
+              <input type="checkbox" class="adm-box-cb" ${isAllGroupChecked ? 'checked' : ''} onclick="toggleSelectGroup('${catName}', this.checked)">
+            </th>
+            <th style="width: 50px">圖示</th>
+            <th>詞彙名稱</th>
+            <th style="width: 60px">分數</th>
+            <th style="width: 120px; text-align: center">操作</th>
+          </tr>
+        </thead>
+        <tbody id="tbody-cat-${catName}"></tbody>
+      </table>
+      ${catWords.length === 0 ? `<div style="color:#888; font-size:12px; padding:10px; text-align:center;">此類別內目前尚無詞彙單字</div>` : ''}
+    `;
+    containerList.appendChild(card);
+    
+    const tbody = document.getElementById(`tbody-cat-${catName}`);
+    if(tbody) {
+      catWords.forEach(item => {
+        const isChecked = selectedWordIndexes.has(item.originalIndex);
+        const isEnabled = enabledWordIndexes !== null && enabledWordIndexes.includes(item.originalIndex);
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td style="text-align: center;">
+            <input type="checkbox" class="adm-box-cb word-item-cb" data-idx="${item.originalIndex}" ${isChecked ? 'checked' : ''} onchange="toggleSelectWord(${item.originalIndex}, this.checked)">
+          </td>
+          <td style="font-size:22px">${item.emoji}</td>
+          <td style="font-weight:700; color:#ffffff;">${item.word} ${isEnabled ? '<span style="font-size:10px;color:#4CAF50;background:rgba(76,175,80,0.15);padding:1px 6px;border-radius:8px;margin-left:4px;">✅ 遊戲中</span>' : ''}</td>
+          <td><span style="color:#FFD700; font-weight:700">${item.points}</span></td>
+          <td style="text-align: center">
+            <button class="abtn abtn-edit" onclick="startEditWord(${item.originalIndex})">修改</button>
+            <button class="abtn abtn-danger" onclick="deleteWord(${item.originalIndex})">刪除</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+  });
+  updateBatchToolbar();
+  rebuildCategoryPills();
+  updateEnabledStatus();
+}
+
+function toggleSelectWord(idx, isChecked) {
+  if (isChecked) {
+    selectedWordIndexes.add(idx);
+  } else {
+    selectedWordIndexes.delete(idx);
+  }
+  updateBatchToolbar();
+}
+
+function toggleSelectGroup(catName, isChecked) {
+  ALL_WORDS.forEach((w, idx) => {
+    if (w.category === catName) {
+      if (isChecked) {
+        selectedWordIndexes.add(idx);
+      } else {
+        selectedWordIndexes.delete(idx);
+      }
+    }
+  });
+  renderAdminTable();
+}
+
+function updateBatchToolbar() {
+  const toolbar = document.getElementById('batch-toolbar');
+  const countEl = document.getElementById('batch-count');
+  
+  if (selectedWordIndexes.size > 0) {
+    countEl.textContent = selectedWordIndexes.size;
+    toolbar.style.display = 'flex';
+  } else {
+    toolbar.style.display = 'none';
+  }
+}
+
+function batchMoveCategory() {
+  const targetCat = document.getElementById('batch-move-cat').value;
+  if (!targetCat) return;
+
+  if (confirm(`確定要將選取的 ${selectedWordIndexes.size} 個詞彙一鍵搬移至「${targetCat}」嗎？`)) {
+    ALL_WORDS.forEach((w, idx) => {
+      if (selectedWordIndexes.has(idx)) {
+        w.category = targetCat;
+      }
+    });
+    addLog('sys', `後台執行批量操作：搬移 ${selectedWordIndexes.size} 個詞彙至【${targetCat}】`);
+    selectedWordIndexes.clear();
+    saveToLocalStorage();
+    renderAdminTable();
+  }
+}
+
+function batchDeleteWords() {
+  if (selectedWordIndexes.size >= ALL_WORDS.length) {
+    alert('系統保護：不可刪除全部單字，詞彙庫至少需要保留一個單字！');
+    return;
+  }
+
+  if (confirm(`⚠️ 警報！您正準備一次刪除 ${selectedWordIndexes.size} 個單字，此操作無法復原！\n\n確認要永久刪除這些詞彙嗎？`)) {
+    const sortedIndexes = Array.from(selectedWordIndexes).sort((a, b) => b - a);
+    sortedIndexes.forEach(idx => {
+      ALL_WORDS.splice(idx, 1);
+    });
+    
+    addLog('sys', `後台執行批量操作：永久刪下了 ${selectedWordIndexes.size} 個詞彙`);
+    selectedWordIndexes.clear();
+    resetAdminForm();
+    saveToLocalStorage();
+    renderAdminTable();
+  }
+}
+
+function applySelectedToGame() {
+  if (selectedWordIndexes.size === 0) {
+    alert('請先勾選至少一個詞彙！');
+    return;
+  }
+  enabledWordIndexes = Array.from(selectedWordIndexes);
+  saveToLocalStorage();
+  addLog('sys', `✅ 已設定 ${enabledWordIndexes.length} 個詞彙專屬進入遊戲（預習本同步更新）`);
+  updateEnabledStatus();
+  alert(`✅ 完成！已將勾選的 ${enabledWordIndexes.length} 個詞彙設定為本局遊戲詞彙。\n預習本也會同步顯示這些詞彙。`);
+}
+
+function clearEnabledWords() {
+  enabledWordIndexes = null;
+  saveToLocalStorage();
+  addLog('sys', '🔄 已清除專屬詞彙設定，恢復使用類別篩選模式。');
+  updateEnabledStatus();
+}
+
+function updateEnabledStatus() {
+  const el = document.getElementById('enabled-status-bar');
+  if (!el) return;
+  if (enabledWordIndexes !== null && enabledWordIndexes.length > 0) {
+    const validWords = enabledWordIndexes.filter(idx => idx < ALL_WORDS.length).map(idx => ALL_WORDS[idx]);
+    el.style.display = 'flex';
+    el.innerHTML = `<span style="color:#4CAF50;font-weight:900;">✅ 遊戲模式：已指定 <b style="font-size:18px;">${validWords.length}</b> 個詞彙進入遊戲</span>
+      <span style="color:#aaa;font-size:12px;margin-left:8px;">${validWords.map(w=>w.emoji+w.word).join('、')}</span>
+      <button class="abtn abtn-danger" onclick="clearEnabledWords()" style="margin-left:16px;padding:4px 12px;flex-shrink:0;">🔄 清除，恢復類別模式</button>`;
+  } else {
+    el.style.display = 'flex';
+    el.innerHTML = `<span style="color:#888;">📂 遊戲模式：依「類別篩選」選取詞彙（預設）</span>`;
+  }
+}
+
+function saveWord() {
+  const wEl = document.getElementById('adm-word');
+  const eEl = document.getElementById('adm-emoji');
+  const pEl = document.getElementById('adm-points');
+  const cEl = document.getElementById('adm-cat');
+  const editIdx = parseInt(document.getElementById('edit-idx').value);
+
+  const word = wEl.value.trim();
+  const emoji = eEl.value.trim() || '🎈';
+  const points = parseInt(pEl.value) || 10;
+  const category = cEl.value;
+
+  if(!word) { alert('請填寫詞彙名稱！'); return; }
+
+  if(editIdx === -1) {
+    ALL_WORDS.push({ word, emoji, category, points });
+    addLog('sys', `後台新增詞彙：「${word}」【${category}】`);
+  } else {
+    const oldName = ALL_WORDS[editIdx].word;
+    ALL_WORDS[editIdx] = { word, emoji, category, points };
+    addLog('sys', `後台將「${oldName}」修改為：「${word}」【${category}】`);
+  }
+  selectedWordIndexes.clear();
+  resetAdminForm();
+  saveToLocalStorage();
+  renderAdminTable();
+}
+
+function startEditWord(idx) {
+  const item = ALL_WORDS[idx];
+  document.getElementById('adm-word').value = item.word;
+  document.getElementById('adm-emoji').value = item.emoji;
+  document.getElementById('adm-points').value = item.points;
+  document.getElementById('adm-cat').value = item.category;
+  document.getElementById('edit-idx').value = idx;
+  document.getElementById('form-title').textContent = '📝 正在修改詞彙';
+  document.getElementById('cancel-btn').style.display = 'inline-block';
+  document.getElementById('save-btn').textContent = '更新資料';
+}
+
+function deleteWord(idx) {
+  if(ALL_WORDS.length <= 1) { alert('詞彙庫至少需要保留一個詞彙！'); return; }
+  const deletedWord = ALL_WORDS[idx].word;
+  if(confirm(`確認要刪除「${deletedWord}」嗎？`)) {
+    ALL_WORDS.splice(idx, 1);
+    addLog('sys', `後台刪下了詞彙：「${deletedWord}」`);
+    selectedWordIndexes.clear();
+    resetAdminForm();
+    saveToLocalStorage();
+    renderAdminTable();
+  }
+}
+
+function resetAdminForm() {
+  document.getElementById('adm-word').value = '';
+  document.getElementById('adm-emoji').value = '';
+  document.getElementById('adm-points').value = '15';
+  document.getElementById('edit-idx').value = '-1';
+  document.getElementById('form-title').textContent = '➕ 新增 / 修改詞彙';
+  document.getElementById('cancel-btn').style.display = 'none';
+  document.getElementById('save-btn').textContent = '儲存變更';
+}
+
+let showBalloonText = true;
+function toggleTextVisibility() {
+  showBalloonText = document.getElementById('show-text-cb').checked;
+  addLog('sys', showBalloonText ? '🟢 已開啟氣球文字顯示' : '👁️ 已隱藏氣球文字（進入盲測挑戰模式！）');
+}
+
+function getWords() { 
+  if (isWeaknessMode && currentSessionMissed.size > 0) {
+    return ALL_WORDS.filter(w => currentSessionMissed.has(w.word));
+  }
+  if (enabledWordIndexes !== null && enabledWordIndexes.length > 0) {
+    return enabledWordIndexes
+      .filter(idx => idx < ALL_WORDS.length)
+      .map(idx => ALL_WORDS[idx]);
+  }
+  return ALL_WORDS.filter(w => activeCategories.has(w.category)); 
+}
+
+let cfg = { spd: 1.0, timeLimit: 60, maxLives: 3, spawnRate: 55, balloonsPerSecond: 1.5, paused: false };
+const DIFFS = {
+  easy: { spd:0.65, timeLimit:90, maxLives:5, spawnRate:80 },
+  normal: { spd:1.0, timeLimit:60, maxLives:3, spawnRate:55 },
+  hard: { spd:1.5, timeLimit:60, maxLives:2, spawnRate:35 },
+  extreme: { spd:2.2, timeLimit:45, maxLives:1, spawnRate:22 },
+};
+function applyDiff() {
+  const d = document.getElementById('diff-sel').value;
+  const p = DIFFS[d];
+  cfg.spd = p.spd; cfg.timeLimit = p.timeLimit; cfg.maxLives = p.maxLives; cfg.spawnRate = p.spawnRate;
+  document.getElementById('spd-sl').value = Math.round(p.spd * 10);
+  document.getElementById('spd-val').textContent = p.spd.toFixed(1) + 'x';
+  document.getElementById('tm-sl').value = p.timeLimit;
+  document.getElementById('tm-val').textContent = p.timeLimit + 's';
+  document.getElementById('lives-sl').value = p.maxLives;
+  document.getElementById('lives-val').textContent = p.maxLives + ' 個';
+  addLog('sys', `難度設為「${d}」（時間及生命值已同步更新）`);
+}
+function updateSpeed(v) { cfg.spd = Math.round(v) / 10; document.getElementById('spd-val').textContent = cfg.spd.toFixed(1) + 'x'; }
+function updateTime(v) { cfg.timeLimit = parseInt(v); document.getElementById('tm-val').textContent = v + 's'; }
+function updateLivesCfg(v) { cfg.maxLives = parseInt(v); document.getElementById('lives-val').textContent = v + ' 個'; }
+function updateBalloonRate(v) { cfg.balloonsPerSecond = parseFloat(v); document.getElementById('bps-val').textContent = cfg.balloonsPerSecond.toFixed(1) + ' 顆/秒'; }
+
+function updStats() {
+  document.getElementById('st-games').textContent = stats.games;
+  document.getElementById('st-hi').textContent = stats.hi;
+  document.getElementById('st-hits').textContent = stats.hits;
+  document.getElementById('st-esc').textContent = stats.esc;
+}
+function addLog(type, msg) {
+  const box = document.getElementById('log-box');
+  if(!box) return;
+  const r = document.createElement('div');
+  r.className = 'log-row';
+  const tags = {hit:'[擊中]',esc:'[逃脫]',end:'[結束]',sys:'[系統]'};
+  const tagCls = {hit:'tag-hit',esc:'tag-esc',end:'tag-end',sys:'tag-sys'};
+  r.innerHTML = `<span class="tag ${tagCls[type]||''}">${tags[type]||''}</span>${msg}`;
+  box.prepend(r);
+  while (box.children.length > 40) box.removeChild(box.lastChild);
+}
+
+const game = { running:false, over:false, score:0, combo:1, comboT:0, lives:3, timeLeft:60, spawnAcc:0 };
+const monkey = { x:0, y:0, speed:4.5, facing:1, arm:0, armDir:1, shootT:0 };
+let balloons=[], darts=[], particles=[], floats=[];
+let raf, tickInt;
+const keys = {};
+
+function openPreview() {
+  let wordsToPreview;
+  const header = document.querySelector('.preview-header p');
+
+  if (enabledWordIndexes !== null && enabledWordIndexes.length > 0) {
+    wordsToPreview = enabledWordIndexes
+      .filter(idx => idx < ALL_WORDS.length)
+      .map(idx => ALL_WORDS[idx]);
+    if (header) header.textContent = `✅ 顯示後台指定的 ${wordsToPreview.length} 個詞彙，點擊卡牌或使用下方工具列切換！`;
+  } else {
+    wordsToPreview = ALL_WORDS.filter(w => activeCategories.has(w.category));
+    if (header) header.textContent = `點擊個別卡牌或使用下方工具列一鍵切換，配合手語教材進行記憶預習吧！`;
+  }
+
+  const grid = document.getElementById('preview-card-grid');
+  grid.innerHTML = '';
+  
+  if (wordsToPreview.length === 0) {
+    grid.innerHTML = `<div style="color:#FF6B6B; font-weight:700; grid-column:1/-1; text-align:center; padding:20px;">⚠️ 目前沒有任何詞彙可預習，請先至管理後台勾選詞彙或開啟類別！</div>`;
+  } else {
+    wordsToPreview.forEach(w => {
+      const card = document.createElement('div');
+      card.className = 'flashcard';
+      card.innerHTML = `
+        <span class="c-cat">${w.category}</span>
+        <span class="c-emoji">${w.emoji}</span>
+        <span class="c-word">${w.word}</span>
+      `;
+      card.onclick = () => { card.classList.toggle('flipped'); };
+      grid.appendChild(card);
+    });
+  }
+  document.getElementById('preview-overlay').style.display = 'flex';
+}
+
+function closePreview() { document.getElementById('preview-overlay').style.display = 'none'; }
+
+function flipAllCards(shouldHideText) {
+  const cards = document.querySelectorAll('.flashcard');
+  cards.forEach(card => {
+    if (shouldHideText) {
+      card.classList.add('flipped');
+    } else {
+      card.classList.remove('flipped');
+    }
+  });
+}
+
+document.addEventListener('keydown', e => {
+  if (document.getElementById('admin-page').classList.contains('active')) return;
+  if (game.running && isHitPaused) { e.preventDefault(); resumeFromHit(); return; }
+  keys[e.key] = true;
+  if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown',' '].includes(e.key)) e.preventDefault();
+});
+document.addEventListener('keyup', e => { keys[e.key] = false; });
+
+cv.addEventListener('mousedown', e => {
+  if (!game.running) return;
+  if (isHitPaused) { e.preventDefault(); resumeFromHit(); return; }
+  if (cfg.paused) return; 
+  const r = cv.getBoundingClientRect();
+  fireDart((e.clientX - r.left) * (W / r.width), (e.clientY - r.top) * (H / r.height));
+});
+
+function rnd(a,b) { return Math.random()*(b-a)+a; }
+
+function startGame() {
+  resize(); // 核心修正：啟動時強制重新測量畫布大小，避免抓到 0x0 寬高
+  
+  monkey.x = W/2; monkey.y = H - 65; monkey.arm = 0; monkey.shootT = 0;
+  balloons=[]; darts=[]; particles=[]; floats=[];
+  game.score=0; game.combo=1; game.comboT=0;
+  game.lives = cfg.maxLives; game.timeLeft = cfg.timeLimit; game.spawnAcc=0;
+  game.running=true; game.over=false; cfg.paused = false; isHitPaused = false;
+  
+  if(!isWeaknessMode) { currentSessionMissed.clear(); }
+  
+  document.getElementById('live-learning-box').style.display = 'none';
+  document.getElementById('sc-el').textContent = '0';
+  document.getElementById('tm-el').textContent = game.timeLeft;
+  document.getElementById('combo-el').style.display = 'none';
+  document.getElementById('ov').style.display = 'none';
+  document.getElementById('pp-btn').textContent = '⏸ 暫停';
+  updLives();
+  
+  clearInterval(tickInt);
+  tickInt = setInterval(() => {
+    if (!game.running || cfg.paused || isHitPaused) return; 
+    game.timeLeft--;
+    document.getElementById('tm-el').textContent = game.timeLeft;
+    if (game.timeLeft <= 0) endGame();
+  }, 1000);
+  
+  if (raf) cancelAnimationFrame(raf);
+  let last = performance.now();
+  
+  function loop(ts) {
+    if (!game.running) return;
+    const dt = Math.min((ts - last) / 16.67, 3);
+    last = ts;
+    if (!cfg.paused && !isHitPaused) update(dt); 
+    draw();
+    raf = requestAnimationFrame(loop);
+  }
+  raf = requestAnimationFrame(loop);
+}
+
+function endGame() {
+  game.running = false; game.over = true;
+  clearInterval(tickInt); stats.games++;
+  if (game.score > stats.hi) stats.hi = game.score;
+  saveToLocalStorage();
+  updStats();
+  
+  const ov = document.getElementById('ov');
+  let reviewHtml = '';
+  
+  if(currentSessionMissed.size > 0) {
+    const missedDetails = ALL_WORDS.filter(w => currentSessionMissed.has(w.word));
+    reviewHtml = `
+      <div class="review-container">
+        <div class="review-title">⚠️ 本局未能掌握的手語弱點詞彙：</div>
+        <div class="review-list">
+          ${missedDetails.map(w => `${w.emoji} <b>${w.word}</b>`).join(' &nbsp;|&nbsp; ')}
+        </div>
+      </div>
+      <button class="gbtn" style="background:#FF6B6B; color:#fff; font-size:15px; padding:10px 24px; margin-bottom:10px;" onclick="startWeakness特訓()">🎯 開啟【弱點加強特訓關卡】</button>
+    `;
+  } else {
+    reviewHtml = `<p style="color:#4CAF50; font-weight:700; margin:15px 0;">🎉 太完美了！你擊中了所有出現的氣球！</p>`;
+  }
+
+  ov.innerHTML = `
+    <h1>遊戲結束！</h1>
+    <div class="fscore">${game.score}</div>
+    <div class="flab">分</div>
+    <p style="color:#888;font-size:13px">最高紀錄：${stats.hi} 分</p>
+    ${reviewHtml}
+    <div style="margin-top:10px;">
+      <button class="gbtn preview-btn" onclick="openPreview()">🃏 預習本次詞彙</button>
+      <button class="gbtn" onclick="isWeaknessMode=false;startGame()">重新正常開局</button>
+    </div>
+  `;
+  ov.style.display = 'flex';
+  document.getElementById('live-learning-box').style.display = 'none';
+}
+
+function startWeakness特訓() {
+  isWeaknessMode = true;
+  addLog('sys', `⚡ 啟動弱點特訓！本局將只會出現剛才漏掉的 ${currentSessionMissed.size} 個生字。`);
+  startGame();
+}
+
+function togglePause() { 
+  if (!game.running || isHitPaused) return; 
+  cfg.paused = !cfg.paused;
+  document.getElementById('pp-btn').textContent = cfg.paused ? '▶ 繼續' : '⏸ 暫停';
+  addLog('sys', cfg.paused ? '遊戲已暫停' : '遊戲已恢復');
+}
+
+function panelReset() {
+  if (raf) cancelAnimationFrame(raf);
+  clearInterval(tickInt); game.running = false; isHitPaused = false;
+  document.getElementById('live-learning-box').style.display = 'none';
+  document.getElementById('preview-overlay').style.display = 'none';
+  const ov = document.getElementById('ov');
+  ov.innerHTML = `
+    <h1>🐒 猴子射氣球</h1>
+    <p class="sub">射中氣球，學習手語！</p>
+    <p style="color:#666;font-size:12px;margin-bottom:20px">W / S / A / D 或 方向鍵 移動猴子 &nbsp;|&nbsp; 滑鼠點擊射飛鏢</p>
+    <div>
+      <button class="gbtn preview-btn" onclick="openPreview()">🃏 預習本次詞彙</button>
+      <button class="gbtn" id="main-btn" onclick="isWeaknessMode=false; startGame();">直接開始遊戲</button>
+    </div>
+  `;
+  ov.style.display = 'flex';
+  addLog('sys', '遊戲已重置');
+}
+
+function updLives() {
+  const heartString = '❤'.repeat(Math.max(0, game.lives));
+  document.getElementById('lives-el').textContent = heartString || '💀';
+}
+
+function fireDart(tx, ty) {
+  const ox = monkey.x + monkey.facing*56, oy = monkey.y - 56;
+  const dx = tx-ox, dy = ty-oy, len = Math.sqrt(dx*dx+dy*dy)||1;
+  darts.push({x:ox,y:oy,vx:dx/len*20,vy:dy/len*20,trail:[],hit:false});
+  monkey.facing = dx>0?1:-1; monkey.shootT = 18;
+}
+
+function spawnBalloon() {
+  const ws = getWords();
+  if (!ws.length) return;
+  const wd = ws[Math.floor(rnd(0,ws.length))];
+  const r = Math.floor(rnd(24,40));
+  const spd = rnd(0.65,1.7)*cfg.spd;
+  const COLS = ['#FF5B5B','#FF9F1C','#FFDE3D','#4BC97A','#5B9FFF','#C47BFF','#FF80C8','#FFB347'];
+  balloons.push({x:rnd(r+15,W-r-15),y:H+r+10,r,color:COLS[Math.floor(rnd(0,COLS.length))],vy:-spd,vx:rnd(-0.5,0.5),wobble:rnd(0,Math.PI*2),word:wd,pop:false,popT:0,escaped:false});
+}
+
+function spawnParts(x,y,color) {
+  for(let i=0;i<18;i++){const a=rnd(0,Math.PI*2),s=rnd(3,8);particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,color,life:1,r:rnd(3,9)});}
+}
+
+function addFloat(x,y,t,c) { floats.push({x,y,text:t,color:c||'#fff',life:1}); }
+
+function showLiveLearning(wd) {
+  const box = document.getElementById('live-learning-box');
+  if(!box) return;
+  document.getElementById('ll-em').textContent = wd.emoji;
+  document.getElementById('ll-wd').textContent = wd.word;
+  box.style.display = 'block';
+  isHitPaused = true; 
+}
+
+function resumeFromHit() {
+  isHitPaused = false; 
+  document.getElementById('live-learning-box').style.display = 'none';
+  for (let key in keys) { keys[key] = false; }
+  addLog('sys', '手語學習完成，遊戲繼續！');
+}
+
+function update(dt) {
+  const ml=keys['ArrowLeft']||keys['a']||keys['A'];
+  const mr=keys['ArrowRight']||keys['d']||keys['D'];
+  const mu=keys['ArrowUp']||keys['w']||keys['W'];
+  const md=keys['ArrowDown']||keys['s']||keys['S'];
+  if(ml){monkey.x-=monkey.speed*dt;monkey.facing=-1;}
+  if(mr){monkey.x+=monkey.speed*dt;monkey.facing=1;}
+  if(mu){monkey.y-=monkey.speed*dt;}
+  if(md){monkey.y+=monkey.speed*dt;}
+  monkey.x=Math.max(40,Math.min(W-40,monkey.x));
+  monkey.y=Math.max(100,Math.min(H-65,monkey.y));
+  if(ml||mr||mu||md){monkey.arm+=0.13*dt*monkey.armDir;if(Math.abs(monkey.arm)>.35)monkey.armDir*=-1;}
+  else monkey.arm*=.88;
+  if(monkey.shootT>0)monkey.shootT-=dt;
+  if(game.comboT>0){game.comboT-=dt;if(game.comboT<=0){game.combo=1;document.getElementById('combo-el').style.display='none';}}
+  game.spawnAcc+=dt;
+  const sr=Math.max(12, (60/cfg.balloonsPerSecond)*(cfg.spawnRate/55)-(cfg.timeLimit-game.timeLeft)*.5);
+  if(game.spawnAcc>sr){spawnBalloon();game.spawnAcc=0;}
+  darts.forEach(d=>{d.trail.push({x:d.x,y:d.y});if(d.trail.length>9)d.trail.shift();d.x+=d.vx*dt;d.y+=d.vy*dt;});
+  darts=darts.filter(d=>!d.hit&&d.y>-40&&d.x>-40&&d.x<W+40);
+  balloons.forEach(b=>{
+    if(b.pop) { b.popT+=dt; return; }
+    b.y+=b.vy*dt;b.x+=b.vx*dt;b.wobble+=.05*dt;
+    if(b.x<b.r||b.x>W-b.r)b.vx*=-1;
+    if(!b.escaped&&b.y<-b.r-10){
+      b.escaped=true;game.lives--;updLives();
+      addFloat(b.x,30,'-1 ❤','#FF6B6B');
+      stats.esc++; 
+      currentSessionMissed.add(b.word.word);
+      updStats();
+      addLog('esc', `「${b.word.word}」氣球逃脫，剩餘 ${game.lives} 命`);
+      if(game.lives<=0)endGame();
+    }
+    darts.forEach(d=>{
+      if(d.hit||b.pop)return;
+      if(b.y < H * 0.74 && Math.hypot(d.x-b.x,d.y-b.y)<b.r+4){
+        b.pop=true;d.hit=true;
+        spawnParts(b.x,b.y,b.color);
+        game.combo=Math.min(game.combo+1,12);game.comboT=140;
+        const pts=b.word.points*game.combo;
+        game.score+=pts;
+        document.getElementById('sc-el').textContent=game.score;
+        const ce=document.getElementById('combo-el');
+        ce.textContent='x'+game.combo;ce.style.display=game.combo>1?'block':'none';
+        addFloat(b.x,b.y-b.r-8,(game.combo>1?`×${game.combo} `:'')+'+'+pts,game.combo>4?'#FFD700':'#fff');
+        showLiveLearning(b.word);
+        if(isWeaknessMode && currentSessionMissed.has(b.word.word)) { currentSessionMissed.delete(b.word.word); }
+        stats.hits++;updStats();
+        addLog('hit',`「${b.word.word}」${b.word.emoji} +${pts}分${game.combo>1?' 連擊×'+game.combo:''}`);
+      }
+    });
+  });
+  balloons=balloons.filter(b=>!b.escaped&&(!b.pop||b.popT<16));
+  particles.forEach(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=.2*dt;p.life-=.045*dt;});
+  particles=particles.filter(p=>p.life>0);
+  floats.forEach(f=>{f.y-=1.5*dt;f.life-=.028*dt;});
+  floats=floats.filter(f=>f.life>0);
+}
+
+function draw() {
+  if(!W||!H)return;
+  ctx.clearRect(0,0,W,H);
+  drawBG();drawBalloons();drawDarts();drawMonkey();drawParts();drawFloats();
+  if(isHitPaused && game.running){
+    ctx.fillStyle='rgba(8,6,30,.4)';ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='#FFD700';ctx.font='900 24px Nunito,sans-serif';ctx.shadowColor='rgba(0,0,0,0.6)';ctx.shadowBlur=4;ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText('✨ 請練習此手語 ✨',W/2,H/2 - 20);
+    ctx.fillStyle='#FFF';ctx.font='700 16px Nunito,sans-serif';
+    ctx.fillText('請按鍵盤「任意鍵」或「點擊滑鼠」繼續！',W/2,H/2 + 20);
+    ctx.shadowBlur=0; 
+  }
+  else if(cfg.paused && game.running){
+    ctx.fillStyle='rgba(8,6,30,.55)';ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='#FFD700';ctx.font='900 38px Nunito,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText('⏸ 暫停中',W/2,H/2);
+  }
+}
+function drawBG(){
+  ctx.fillStyle='#0f0c29';ctx.fillRect(0,0,W,H*.74);
+  ctx.fillStyle='rgba(255,255,255,.55)';
+  [[.07,.09],[.18,.04],[.38,.12],[.55,.03],[.72,.09],[.88,.05],[.95,.14],[.04,.18],[.28,.07],[.62,.16],[.83,.11]].forEach(([fx,fy])=>{ctx.beginPath();ctx.arc(fx*W,fy*H,1.3,0,Math.PI*2);ctx.fill();});
+  ctx.fillStyle='#FFF9C4';ctx.beginPath();ctx.arc(W*.9,H*.1,20,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#0f0c29';ctx.beginPath();ctx.arc(W*.9+8,H*.1-6,16,0,Math.PI*2);ctx.fill();
+  [[.12,.2,.7],[.45,.15,.9],[.78,.22,.65]].forEach(([fx,fy,s])=>drawCloud(fx*W,fy*H,s));
+  ctx.fillStyle='#2d5a1b';ctx.fillRect(0,H*.74,W,H*.26);
+  ctx.fillStyle='#3a7023';ctx.fillRect(0,H*.74,W,16);
+  ctx.fillStyle='#245218';ctx.fillRect(0,H-20,W,20);
+  [.07,.15,.82,.9].forEach((fx,i)=>drawTree(fx*W,H*.74+2,42+i%2*10));
+  ctx.fillStyle='#8B6914';ctx.fillRect(W/2-46,H-23,92,11);
+  ctx.fillStyle='#6B4F0D';ctx.fillRect(W/2-42,H-12,84,6);
+}
+function drawCloud(x,y,s){
+  ctx.fillStyle='rgba(255,255,255,.1)';
+  ctx.beginPath();ctx.arc(x,y,28*s,0,Math.PI*2);ctx.arc(x+26*s,y-7*s,20*s,0,Math.PI*2);ctx.arc(x-20*s,y-4*s,17*s,0,Math.PI*2);ctx.fill();
+}
+function drawTree(x,base,sz){
+  ctx.fillStyle='#5D4037';ctx.fillRect(x-5,base-sz*.45,10,sz*.45);
+  ctx.fillStyle='#2E7D32';ctx.beginPath();ctx.moveTo(x,base-sz*1.6);ctx.lineTo(x-sz*.6,base-sz*.35);ctx.lineTo(x+sz*.6,base-sz*.35);ctx.closePath();ctx.fill();
+  ctx.fillStyle='#388E3C';ctx.beginPath();ctx.moveTo(x,base-sz*2.0);ctx.lineTo(x-sz*.45,base-sz*.85);ctx.lineTo(x+sz*.45,base-sz*.85);ctx.closePath();ctx.fill();
+}
+function drawMonkey(){
+  const mx=monkey.x,my=monkey.y,f=monkey.facing,sh=monkey.shootT>0;
+  ctx.save();ctx.translate(mx,my); ctx.scale(2, 2);
+  
+  ctx.strokeStyle='#a67c52';ctx.lineWidth=5;ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(14*f,10);ctx.bezierCurveTo(36*f,2,42*f,20,32*f,30);ctx.stroke();
+  
+  const ls=monkey.arm*.5;
+  ctx.fillStyle='#a67c52';
+  ctx.beginPath();ctx.ellipse(-8+ls*6,14,6,14,ls*.2,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(8-ls*6,14,6,14,-ls*.2,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#8b5e3c';
+  ctx.beginPath();ctx.ellipse(-8+ls*4,24,7,6,0,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(8-ls*4,24,7,6,0,0,Math.PI*2);ctx.fill();
+  
+  ctx.fillStyle='#a67c52';ctx.beginPath();ctx.roundRect(-16,-10,32,26,12);ctx.fill();
+  ctx.fillStyle='#fce5cd';ctx.beginPath();ctx.ellipse(0,1,11,10,0,0,Math.PI*2);ctx.fill();
+  
+  ctx.save();ctx.translate(-16*f,2);ctx.rotate(monkey.arm*.4+.5*f);
+  ctx.fillStyle='#a67c52';ctx.beginPath();ctx.ellipse(0,0,6,13,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#fce5cd';ctx.beginPath();ctx.arc(0,12,5,0,Math.PI*2);ctx.fill();
+  ctx.restore();
+  
+  ctx.save();ctx.translate(16*f,2);ctx.rotate(sh?-1.2*f:-.3*f);
+  ctx.fillStyle='#a67c52';ctx.beginPath();ctx.ellipse(0,0,6,13,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#fce5cd';ctx.beginPath();ctx.arc(0,12,5,0,Math.PI*2);ctx.fill();
+  
+  ctx.save();ctx.translate(0,12);ctx.scale(f,1);
+  ctx.fillStyle='#FF6B6B';ctx.beginPath();ctx.roundRect(-4,-5,24,10,4);ctx.fill();
+  ctx.fillStyle='#FFD700';ctx.beginPath();ctx.roundRect(-2,-8,9,5,2);ctx.fill();
+  ctx.fillStyle='#5B9FFF';ctx.beginPath();ctx.arc(18,0,6,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(18,0,2.5,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#FF6B6B';ctx.beginPath();ctx.roundRect(-2,3,6,8,2);ctx.fill();
+  if(sh){ctx.fillStyle='rgba(255,255,255,.8)';ctx.beginPath();ctx.arc(18,0,10,0,Math.PI*2);ctx.fill();}
+  ctx.restore();
+  ctx.restore();
+  
+  ctx.fillStyle='#a67c52';ctx.beginPath();ctx.arc(0,-24,21,0,Math.PI*2);ctx.fill();
+  
+  ctx.fillStyle='#fce5cd';
+  ctx.beginPath();ctx.ellipse(-7,-25,9,9,0,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(7,-25,9,9,0,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(0,-20,13,10,0,0,Math.PI*2);ctx.fill();
+  
+  ctx.fillStyle='#a67c52';
+  ctx.beginPath();ctx.arc(-22,-25,8,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.arc(22,-25,8,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#fce5cd';
+  ctx.beginPath();ctx.arc(-21,-25,5,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.arc(21,-25,5,0,Math.PI*2);ctx.fill();
+  
+  ctx.fillStyle='rgba(255,135,135,0.6)';
+  ctx.beginPath();ctx.arc(-11,-20,3.5,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.arc(11,-20,3.5,0,Math.PI*2);ctx.fill();
+  
+  ctx.fillStyle='#fff';
+  ctx.beginPath();ctx.arc(-7*f,-25,4.5,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.arc(7*f,-25,4.5,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#2f1f17';
+  ctx.beginPath();ctx.arc(-7*f,-25,3,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.arc(7*f,-25,3,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#fff';
+  ctx.beginPath();ctx.arc(-8*f,-26,1.2,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.arc(6*f,-26,1.2,0,Math.PI*2);ctx.fill();
+  
+  ctx.fillStyle='#b68a6b';
+  ctx.beginPath();ctx.ellipse(0,-21,1.5,1,0,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='#7a4f31';ctx.lineWidth=1.5;ctx.lineCap='round';
+  ctx.beginPath();ctx.arc(0,-18,4,0.1,Math.PI-0.1);ctx.stroke();
+  
+  ctx.fillStyle='#1e40af';ctx.beginPath();ctx.ellipse(0,-42,16,5,0,0,Math.PI*2);ctx.fill();
+  ctx.fillRect(-10,-58,20,18);
+  ctx.fillStyle='#FFD700';ctx.fillRect(-10,-44,20,3);
+  
+  ctx.restore();
+}
+function drawBalloons(){
+  balloons.forEach(b=>{
+    if(b.pop)return;
+    const w=Math.sin(b.wobble)*2.5;
+    ctx.save();ctx.translate(b.x,b.y);
+    ctx.fillStyle=b.color;ctx.beginPath();ctx.ellipse(w,0,b.r*.84,b.r,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,.28)';ctx.beginPath();ctx.ellipse(w-b.r*.28,-b.r*.32,b.r*.2,b.r*.32,-.4,0,Math.PI*2);ctx.fill();
+    if (showBalloonText) {
+      ctx.fillStyle='rgba(0,0,0,.45)';ctx.beginPath();ctx.roundRect(w-b.r*.72,b.r*.18,b.r*1.44,b.r*.68,4);ctx.fill();
+      ctx.fillStyle='#fff';ctx.font=`900 ${Math.floor(b.r*.44)}px Nunito,sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.fillText(b.word.word,w,b.r*.52);
+    } else {
+      ctx.fillStyle='rgba(255,255,255,.75)';ctx.font=`900 ${Math.floor(b.r*.75)}px 'Nunito', sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.fillText('?',w,-b.r*.05);
+    }
+    ctx.strokeStyle='rgba(255,255,255,.35)';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(w,b.r);ctx.bezierCurveTo(w+10,b.r+12,w-8,b.r+24,w,b.r+34);ctx.stroke();
+    ctx.restore();
+  });
+}
+function drawDarts(){
+  darts.forEach(d=>{
+    if(d.hit)return;
+    ctx.save();ctx.translate(d.x,d.y);
+    d.trail.forEach((p,i)=>{const t=(i+1)/d.trail.length;ctx.globalAlpha=t*.3;ctx.fillStyle='#5B9FFF';ctx.beginPath();ctx.arc(p.x-d.x,p.y-d.y,3*t,0,Math.PI*2);ctx.fill();});
+    ctx.globalAlpha=1;
+    ctx.fillStyle='rgba(91,159,255,.35)';ctx.beginPath();ctx.arc(0,0,8,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#5B9FFF';ctx.beginPath();ctx.arc(0,0,5,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,.8)';ctx.beginPath();ctx.arc(-1.5,-1.5,1.8,0,Math.PI*2);ctx.fill();
+    ctx.restore();
+  });
+}
+function drawParts(){ particles.forEach(p=>{ctx.save();ctx.globalAlpha=Math.max(0,p.life*.9);ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.r*p.life,0,Math.PI*2);ctx.fill();ctx.restore();}); }
+function drawFloats(){ floats.forEach(f=>{ctx.save();ctx.globalAlpha=Math.min(1,f.life*1.5);ctx.fillStyle=f.color;ctx.font=`900 ${f.color==='#FFD700'?19:15}px Nunito,sans-serif`;ctx.shadowColor='#000';ctx.shadowBlur=5;ctx.textAlign='center';ctx.fillText(f.text,f.x,f.y);ctx.restore();}); }
+
+// 初始化介面與按鈕事件繫結
+rebuildCategoryPills();
+updStats();
+draw();
+</script>
+</body>
+</html>
