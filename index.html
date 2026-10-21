@@ -87,13 +87,19 @@ canvas{display:block;width:100%;height:100%}
 .preview-header { text-align: center; margin-bottom: 20px; }
 .preview-header h2 { font-size: 32px; color: #FFD700; font-weight: 900; }
 .preview-header p { color: #aaa; font-size: 14px; margin-top: 5px; }
-.preview-toolbar { margin-bottom: 15px; display: flex; gap: 10px; }
+.preview-toolbar { margin-bottom: 15px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
 .tbtn { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; font-size: 12px; font-weight: 700; padding: 6px 14px; border-radius: 20px; cursor: pointer; transition: all 0.15s; }
 .tbtn:hover { background: #5B9FFF; border-color: #5B9FFF; }
 
 .card-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-  gap: 16px; width: 100%; max-width: 800px; margin-bottom: 30px;
+  display: grid; grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 12px; width: 100%; max-width: 1100px; margin-bottom: 30px;
+}
+@media (max-width: 1100px) {
+  .card-grid { gap: 8px; }
+  .flashcard { height: 130px; }
+  .flashcard .c-emoji { font-size: 36px; }
+  .flashcard .c-word { font-size: 15px; }
 }
 .flashcard {
   height: 160px; background: #1a1640; border: 2px solid rgba(255,215,0,0.2);
@@ -172,6 +178,16 @@ input::placeholder {color:rgba(255,255,255,0.45)}
 .category-card-header{display:flex;margin-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.06);padding-bottom:4px;justify-content:space-between;align-items:center}
 .category-card-title{font-size:14px;font-weight:900;color:#FFD700}
 .category-card-badge{font-size:11px;background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:10px;color:#ccc}
+.category-card-header{cursor:pointer;user-select:none}
+.category-card-header:hover .category-card-title{color:#ffe66d}
+.cat-arrow{display:inline-block;width:14px;font-size:11px;color:#FFD700;transition:transform .2s;margin-right:4px}
+.category-card-box.collapsed .cat-arrow{transform:rotate(-90deg)}
+.category-card-box.collapsed .category-card-header{margin-bottom:0;border-bottom:none;padding-bottom:0}
+.category-card-box.collapsed .category-card-body{display:none}
+.overview-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.overview-title{cursor:pointer;user-select:none;margin:0}
+.overview-tools{display:flex;gap:6px}
+.overview-tools .abtn{font-size:12px;padding:5px 10px}
 .word-table{width:100%;border-collapse:collapse;text-align:left}
 .word-table th{font-size:11px;color:#888;padding:6px 4px;border-bottom:1px solid rgba(255,255,255,0.1)}
 .word-table td{font-size:13px;padding:6px 4px;border-bottom:1px solid rgba(255,255,255,0.04);vertical-align:middle}
@@ -222,6 +238,8 @@ input[type=checkbox].adm-box-cb {
         <div class="preview-toolbar">
           <button class="tbtn" onclick="flipAllCards(true)">👁️ 全部蓋牌 (開啟盲測)</button>
           <button class="tbtn" onclick="flipAllCards(false)">🔓 全部翻開 (顯示中文)</button>
+          <button class="tbtn" onclick="exportCardsImage(true)">🖼️ 匯出圖片 (含中文)</button>
+          <button class="tbtn" onclick="exportCardsImage(false)">🖨️ 匯出圖片 (空白練習版)</button>
         </div>
 
         <div class="card-grid" id="preview-card-grid"></div>
@@ -351,7 +369,15 @@ input[type=checkbox].adm-box-cb {
     </div>
 
     <div class="admin-box" style="background:transparent; border:none; padding:0;">
-      <h3 style="border-bottom:none; margin-bottom:10px; font-size:20px; color:#ffffff;">📋 詞彙分類總覽</h3>
+      <div class="overview-head">
+        <h3 class="overview-title" id="overview-title" onclick="toggleOverview()" style="border-bottom:none; font-size:20px; color:#ffffff;">
+          <span class="cat-arrow" id="overview-arrow" style="font-size:14px;">▼</span>📋 詞彙分類總覽
+        </h3>
+        <div class="overview-tools" id="overview-tools">
+          <button class="abtn abtn-close" onclick="setAllCategories(false)">全部展開</button>
+          <button class="abtn abtn-close" onclick="setAllCategories(true)">全部收合</button>
+        </div>
+      </div>
       <div class="category-container-list" id="category-box-list"></div>
     </div>
   </div>
@@ -624,6 +650,48 @@ function deleteCategory(catName) {
   }
 }
 
+let collapsedCats = new Set();
+let overviewCollapsed = false;
+try {
+  collapsedCats = new Set(JSON.parse(localStorage.getItem('adm_collapsed_cats') || '[]'));
+  overviewCollapsed = localStorage.getItem('adm_overview_collapsed') === '1';
+} catch(e) {}
+
+function saveCollapseState() {
+  try {
+    localStorage.setItem('adm_collapsed_cats', JSON.stringify([...collapsedCats]));
+    localStorage.setItem('adm_overview_collapsed', overviewCollapsed ? '1' : '0');
+  } catch(e) {}
+}
+
+function applyOverviewState() {
+  const list = document.getElementById('category-box-list');
+  const arrow = document.getElementById('overview-arrow');
+  const tools = document.getElementById('overview-tools');
+  if (list) list.style.display = overviewCollapsed ? 'none' : '';
+  if (tools) tools.style.display = overviewCollapsed ? 'none' : '';
+  if (arrow) arrow.style.transform = overviewCollapsed ? 'rotate(-90deg)' : '';
+}
+
+function toggleOverview() {
+  overviewCollapsed = !overviewCollapsed;
+  applyOverviewState();
+  saveCollapseState();
+}
+
+function toggleCategoryCard(catName) {
+  if (collapsedCats.has(catName)) collapsedCats.delete(catName);
+  else collapsedCats.add(catName);
+  saveCollapseState();
+  renderAdminTable();
+}
+
+function setAllCategories(collapse) {
+  collapsedCats = collapse ? new Set(SYSTEM_CATEGORIES) : new Set();
+  saveCollapseState();
+  renderAdminTable();
+}
+
 function renderAdminTable() {
   const containerList = document.getElementById('category-box-list');
   const totalCountEl = document.getElementById('total-words-count');
@@ -655,12 +723,13 @@ function renderAdminTable() {
     const isAllGroupChecked = catWords.length > 0 && catWords.every(item => selectedWordIndexes.has(item.originalIndex));
 
     const card = document.createElement('div');
-    card.className = 'category-card-box';
+    card.className = 'category-card-box' + (collapsedCats.has(catName) ? ' collapsed' : '');
     card.innerHTML = `
-      <div class="category-card-header">
-        <div class="category-card-title">📁 類別：${catName}</div>
+      <div class="category-card-header" title="點擊展開／收合">
+        <div class="category-card-title"><span class="cat-arrow">▼</span>📁 類別：${catName}</div>
         <div class="category-card-badge">共 ${catWords.length} 個單字</div>
       </div>
+      <div class="category-card-body">
       <table class="word-table">
         <thead>
           <tr>
@@ -676,7 +745,9 @@ function renderAdminTable() {
         <tbody id="tbody-cat-${catName}"></tbody>
       </table>
       ${catWords.length === 0 ? `<div style="color:#888; font-size:12px; padding:10px; text-align:center;">此類別內目前尚無詞彙單字</div>` : ''}
+      </div>
     `;
+    card.querySelector('.category-card-header').addEventListener('click', () => toggleCategoryCard(catName));
     containerList.appendChild(card);
     
     const tbody = document.getElementById(`tbody-cat-${catName}`);
@@ -701,6 +772,7 @@ function renderAdminTable() {
       });
     }
   });
+  applyOverviewState();
   updateBatchToolbar();
   rebuildCategoryPills();
   updateEnabledStatus();
@@ -940,6 +1012,8 @@ let balloons=[], darts=[], particles=[], floats=[];
 let raf, tickInt;
 const keys = {};
 
+let currentPreviewWords = [];
+
 function openPreview() {
   let wordsToPreview;
   const header = document.querySelector('.preview-header p');
@@ -954,6 +1028,7 @@ function openPreview() {
     if (header) header.textContent = `點擊個別卡牌或使用下方工具列一鍵切換，配合手語教材進行記憶預習吧！`;
   }
 
+  currentPreviewWords = wordsToPreview;
   const grid = document.getElementById('preview-card-grid');
   grid.innerHTML = '';
   
@@ -973,6 +1048,109 @@ function openPreview() {
     });
   }
   document.getElementById('preview-overlay').style.display = 'flex';
+}
+
+// 🖼️ 匯出可列印的卡片圖片（A4 直式 300dpi，一列 7 張，自動分頁）
+function exportCardsImage(showWord) {
+  const words = currentPreviewWords;
+  if (!words || words.length === 0) { alert('目前沒有可匯出的詞彙！'); return; }
+
+  const PW = 2480, PH = 3508, MARGIN = 120, HEAD = 230, COLS = 7, GAP = 20;
+  const CW = Math.floor((PW - MARGIN * 2 - GAP * (COLS - 1)) / COLS);
+  const CH = 340;
+  const rows = Math.floor((PH - MARGIN - HEAD - MARGIN + GAP) / (CH + GAP));
+  const perPage = rows * COLS;
+  const pages = Math.ceil(words.length / perPage);
+  const WORD_FONT = '"Microsoft JhengHei","PingFang TC","Noto Sans TC","Heiti TC",sans-serif';
+  const EMOJI_FONT = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+  const modeName = showWord ? '含中文' : '空白練習版';
+
+  function roundRect(c, x, y, w, h, r) {
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.arcTo(x + w, y, x + w, y + h, r);
+    c.arcTo(x + w, y + h, x, y + h, r);
+    c.arcTo(x, y + h, x, y, r);
+    c.arcTo(x, y, x + w, y, r);
+    c.closePath();
+  }
+
+  for (let p = 0; p < pages; p++) {
+    const c = document.createElement('canvas');
+    c.width = PW; c.height = PH;
+    const g = c.getContext('2d');
+    g.fillStyle = '#ffffff';
+    g.fillRect(0, 0, PW, PH);
+
+    // 標題
+    g.fillStyle = '#222';
+    g.textBaseline = 'alphabetic';
+    g.textAlign = 'left';
+    g.font = `900 80px ${WORD_FONT}`;
+    g.fillText(`詞彙預習卡片（${modeName}）`, MARGIN, MARGIN + 70);
+    g.font = `500 44px ${WORD_FONT}`;
+    g.fillStyle = '#666';
+    g.fillText(`共 ${words.length} 個詞彙　第 ${p + 1} / ${pages} 頁`, MARGIN, MARGIN + 140);
+    if (!showWord) {
+      g.textAlign = 'right';
+      g.fillText('姓名：____________　日期：____________', PW - MARGIN, MARGIN + 140);
+    }
+
+    const slice = words.slice(p * perPage, (p + 1) * perPage);
+    slice.forEach((w, i) => {
+      const col = i % COLS, row = Math.floor(i / COLS);
+      const x = MARGIN + col * (CW + GAP);
+      const y = HEAD + MARGIN + row * (CH + GAP);
+
+      g.lineWidth = 3;
+      g.strokeStyle = '#444';
+      roundRect(g, x, y, CW, CH, 18);
+      g.stroke();
+
+      // 類別
+      g.textAlign = 'left';
+      g.fillStyle = '#999';
+      g.font = `500 24px ${WORD_FONT}`;
+      g.fillText(w.category || '', x + 14, y + 36);
+
+      // 圖示
+      g.textAlign = 'center';
+      g.fillStyle = '#000';
+      g.font = `120px ${EMOJI_FONT}`;
+      g.fillText(w.emoji, x + CW / 2, y + 190);
+
+      if (showWord) {
+        let size = 52;
+        g.fillStyle = '#111';
+        do {
+          g.font = `900 ${size}px ${WORD_FONT}`;
+          size -= 2;
+        } while (g.measureText(w.word).width > CW - 24 && size > 20);
+        g.fillText(w.word, x + CW / 2, y + CH - 40);
+      } else {
+        // 書寫線
+        g.strokeStyle = '#888';
+        g.lineWidth = 2;
+        g.beginPath();
+        g.moveTo(x + 24, y + CH - 44);
+        g.lineTo(x + CW - 24, y + CH - 44);
+        g.stroke();
+      }
+    });
+
+    const fileName = `詞彙預習卡片_${modeName}_第${p + 1}頁.png`;
+    c.toBlob(blob => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      setTimeout(() => {
+        const a = document.createElement('a');
+        a.href = url; a.download = fileName;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+      }, p * 400);
+    }, 'image/png');
+  }
+  if (pages > 1) addLog('sys', `已匯出 ${pages} 頁卡片圖片`);
 }
 
 function closePreview() { document.getElementById('preview-overlay').style.display = 'none'; }
