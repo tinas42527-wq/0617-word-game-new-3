@@ -53,7 +53,7 @@ canvas{display:block;width:100%;height:100%}
 
 /* 🎯 右側即時學習提示面板 */
 #live-learning-box {
-  position: absolute; top: 16px; right: 16px; width: 240px;
+  position: absolute; top: 16px; right: 16px; width: 240px; zoom: var(--ll-scale,1);
   background: rgba(8, 6, 30, 0.95); border: 3px solid #FFD700; border-radius: 12px;
   padding: 16px; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,0.6);
   display: none; z-index: 40; pointer-events: none; animation: slideIn 0.3s ease-out;
@@ -124,7 +124,7 @@ canvas{display:block;width:100%;height:100%}
 .review-list { font-size: 14px; color: #ddd; max-height: 80px; overflow-y: auto; line-height: 1.5; }
 
 /* ── 側邊控制台 ── */
-#panel{width:260px;flex-shrink:0;background:rgba(8,6,30,0.95);border-left:1px solid rgba(255,215,0,0.15);display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden}
+#panel{width:var(--panel-w,260px);min-width:200px;flex-shrink:0;background:rgba(8,6,30,0.95);border-left:1px solid rgba(255,215,0,0.15);display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden}
 .pt{font-size:11px;font-weight:900;color:#FFD700;letter-spacing:2px;padding:12px 14px 6px;text-transform:uppercase;border-bottom:1px solid rgba(255,215,0,0.1);flex-shrink:0}
 .ps{padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.06)}
 .pl{font-size:11px;color:#888;margin-bottom:5px;letter-spacing:.5px}
@@ -302,10 +302,22 @@ input[type=checkbox].adm-box-cb {
         顯示氣球中中文 (取消勾選即開啟盲測)
       </label>
     </div>
-    <div class="pt" style="padding-top:10px">📁 出現詞彙類別篩選</div>
-    <div class="ps" style="border-bottom:none"><div id="cat-wrap"></div></div>
-    <div class="pt" style="padding-top:10px">📊 歷史數據統計</div>
+    <div class="pt" style="padding-top:10px">🖥️ 版面占比設定</div>
     <div class="ps">
+      <div class="rrow"><span>遊戲區 : 控制面板</span><span id="lay-val" style="color:#FFD700;font-weight:700">--</span></div>
+      <input type="range" id="lay-sl" min="15" max="50" value="20" step="1" oninput="updateLayout(this.value)">
+      <div class="rrow" style="margin-top:6px"><span>🃏 學習提示卡大小</span><span id="ll-val" style="color:#5B9FFF;font-weight:700">100%</span></div>
+      <input type="range" id="ll-sl" min="60" max="160" value="100" step="5" oninput="updateLLScale(this.value)">
+      <div class="rrow" style="margin-top:6px"><span>面板顯示區塊</span></div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#aaa;cursor:pointer;margin-bottom:3px"><input type="checkbox" id="sec-cat" checked onchange="toggleSection()" style="width:auto;margin:0"> 類別篩選</label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#aaa;cursor:pointer;margin-bottom:3px"><input type="checkbox" id="sec-stat" checked onchange="toggleSection()" style="width:auto;margin:0"> 歷史數據統計</label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#aaa;cursor:pointer"><input type="checkbox" id="sec-log" checked onchange="toggleSection()" style="width:auto;margin:0"> 即時紀錄</label>
+      <button class="pbtn" onclick="resetLayout()">↺ 還原預設版面</button>
+    </div>
+    <div class="pt sec-cat" style="padding-top:10px">📁 出現詞彙類別篩選</div>
+    <div class="ps sec-cat" style="border-bottom:none"><div id="cat-wrap"></div></div>
+    <div class="pt sec-stat" style="padding-top:10px">📊 歷史數據統計</div>
+    <div class="ps sec-stat">
       <div class="stat-grid">
         <div class="stat-cell"><span class="stat-n" id="st-games">0</span><div class="stat-l">總場次</div></div>
         <div class="stat-cell"><span class="stat-n" id="st-hi">0</span><div class="stat-l">最高分</div></div>
@@ -313,8 +325,8 @@ input[type=checkbox].adm-box-cb {
         <div class="stat-cell"><span class="stat-n" id="st-esc">0</span><div class="stat-l">逃脫數</div></div>
       </div>
     </div>
-    <div class="pt" style="padding-top:10px">📋 即時紀錄</div>
-    <div id="log-box"></div>
+    <div class="pt sec-log" style="padding-top:10px">📋 即時紀錄</div>
+    <div id="log-box" class="sec-log"></div>
   </div>
 </div>
 
@@ -988,6 +1000,76 @@ function updateTime(v) { cfg.timeLimit = parseInt(v); document.getElementById('t
 function updateLivesCfg(v) { cfg.maxLives = parseInt(v); document.getElementById('lives-val').textContent = v + ' 個'; }
 function updateBalloonRate(v) { cfg.balloonsPerSecond = parseFloat(v); document.getElementById('bps-val').textContent = cfg.balloonsPerSecond.toFixed(1) + ' 顆/秒'; }
 
+// ── 版面占比控制 ──
+const LAYOUT_KEY = 'monkeyBalloonLayout';
+function saveLayout() {
+  try {
+    localStorage.setItem(LAYOUT_KEY, JSON.stringify({
+      panel: document.getElementById('lay-sl').value,
+      ll: document.getElementById('ll-sl').value,
+      cat: document.getElementById('sec-cat').checked,
+      stat: document.getElementById('sec-stat').checked,
+      log: document.getElementById('sec-log').checked
+    }));
+  } catch(e) {}
+}
+function updateLayout(v, noSave) {
+  v = parseInt(v);
+  document.getElementById('lay-sl').value = v;
+  document.documentElement.style.setProperty('--panel-w', v + 'vw');
+  document.getElementById('lay-val').textContent = (100 - v) + '% : ' + v + '%';
+  resize();
+  if (!noSave) saveLayout();
+}
+function updateLLScale(v, noSave) {
+  v = parseInt(v);
+  document.getElementById('ll-sl').value = v;
+  document.documentElement.style.setProperty('--ll-scale', v / 100);
+  document.getElementById('ll-val').textContent = v + '%';
+  if (!noSave) saveLayout();
+}
+function toggleSection(noSave) {
+  [['cat','sec-cat'],['stat','sec-stat'],['log','sec-log']].forEach(([k,id]) => {
+    const on = document.getElementById(id).checked;
+    document.querySelectorAll('.' + id).forEach(el => el.style.display = on ? '' : 'none');
+  });
+  if (noSave !== true) saveLayout();
+}
+function resetLayout() {
+  document.documentElement.style.removeProperty('--panel-w');
+  document.documentElement.style.removeProperty('--ll-scale');
+  ['sec-cat','sec-stat','sec-log'].forEach(id => document.getElementById(id).checked = true);
+  try { localStorage.removeItem(LAYOUT_KEY); } catch(e) {}
+  toggleSection(true);
+  updateLLScale(100, true);
+  initLayoutUI();
+  resize();
+}
+function initLayoutUI() {
+  const pw = document.getElementById('panel').getBoundingClientRect().width;
+  const pct = Math.min(50, Math.max(15, Math.round(pw / window.innerWidth * 100)));
+  document.getElementById('lay-sl').value = pct;
+  document.getElementById('lay-val').textContent = (100 - pct) + '% : ' + pct + '%';
+}
+(function restoreLayout() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(LAYOUT_KEY) || 'null'); } catch(e) {}
+  if (saved) {
+    updateLayout(saved.panel, true);
+    updateLLScale(saved.ll, true);
+    document.getElementById('sec-cat').checked = saved.cat !== false;
+    document.getElementById('sec-stat').checked = saved.stat !== false;
+    document.getElementById('sec-log').checked = saved.log !== false;
+    toggleSection(true);
+  } else {
+    initLayoutUI();
+  }
+  window.addEventListener('resize', initLayoutUI_ifDefault);
+  function initLayoutUI_ifDefault() {
+    if (!document.documentElement.style.getPropertyValue('--panel-w')) initLayoutUI();
+  }
+})();
+
 function updStats() {
   document.getElementById('st-games').textContent = stats.games;
   document.getElementById('st-hi').textContent = stats.hi;
@@ -1559,3 +1641,4 @@ draw();
 </script>
 </body>
 </html>
+
