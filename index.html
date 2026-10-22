@@ -238,8 +238,8 @@ input[type=checkbox].adm-box-cb {
         <div class="preview-toolbar">
           <button class="tbtn" onclick="flipAllCards(true)">👁️ 全部蓋牌 (開啟盲測)</button>
           <button class="tbtn" onclick="flipAllCards(false)">🔓 全部翻開 (顯示中文)</button>
-          <button class="tbtn" onclick="exportCardsImage(true)">🖼️ 匯出圖片 (含中文)</button>
-          <button class="tbtn" onclick="exportCardsImage(false)">🖨️ 匯出圖片 (空白練習版)</button>
+          <button class="tbtn" onclick="exportCardsImage(true)">📄 匯出 PDF (含中文)</button>
+          <button class="tbtn" onclick="exportCardsImage(false)">📄 匯出 PDF (空白練習版)</button>
         </div>
 
         <div class="card-grid" id="preview-card-grid"></div>
@@ -366,7 +366,7 @@ input[type=checkbox].adm-box-cb {
           </div>
           <div>
             <label>得分點數</label>
-            <input type="number" id="adm-points" value="15" min="1">
+            <input type="number" id="adm-points" value="5" min="1">
           </div>
         </div>
         <div class="form-group">
@@ -951,7 +951,7 @@ function deleteWord(idx) {
 function resetAdminForm() {
   document.getElementById('adm-word').value = '';
   document.getElementById('adm-emoji').value = '';
-  document.getElementById('adm-points').value = '15';
+  document.getElementById('adm-points').value = '5';
   document.getElementById('edit-idx').value = '-1';
   document.getElementById('form-title').textContent = '➕ 新增 / 修改詞彙';
   document.getElementById('cancel-btn').style.display = 'none';
@@ -1132,7 +1132,7 @@ function openPreview() {
   document.getElementById('preview-overlay').style.display = 'flex';
 }
 
-// 🖼️ 匯出可列印的卡片圖片（A4 直式 300dpi，一列 7 張，自動分頁）
+// 📄 匯出可列印的卡片 PDF（A4 直式，一列 7 張，自動分頁）
 function exportCardsImage(showWord) {
   const words = currentPreviewWords;
   if (!words || words.length === 0) { alert('目前沒有可匯出的詞彙！'); return; }
@@ -1157,6 +1157,7 @@ function exportCardsImage(showWord) {
     c.closePath();
   }
 
+  const pageCanvases = [];
   for (let p = 0; p < pages; p++) {
     const c = document.createElement('canvas');
     c.width = PW; c.height = PH;
@@ -1220,19 +1221,62 @@ function exportCardsImage(showWord) {
       }
     });
 
-    const fileName = `詞彙預習卡片_${modeName}_第${p + 1}頁.png`;
-    c.toBlob(blob => {
-      if (!blob) return;
-      const url = URL.createObjectURL(blob);
-      setTimeout(() => {
-        const a = document.createElement('a');
-        a.href = url; a.download = fileName;
-        document.body.appendChild(a); a.click(); a.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 2000);
-      }, p * 400);
-    }, 'image/png');
+    pageCanvases.push(c);
   }
-  if (pages > 1) addLog('sys', `已匯出 ${pages} 頁卡片圖片`);
+  {
+    const pdfBlob = canvasesToPDF(pageCanvases);
+    const url = URL.createObjectURL(pdfBlob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `詞彙預習卡片_${modeName}.pdf`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    addLog('sys', `已匯出 PDF（${pages} 頁，${words.length} 個詞彙）`);
+  }
+}
+
+// 📄 純前端 PDF 產生器：每個 canvas 以 JPEG 嵌入一頁 A4（不需外部函式庫，中文與 emoji 不會亂碼）
+function canvasesToPDF(canvases) {
+  const enc = new TextEncoder();
+  const PWpt = 595.28, PHpt = 841.89;
+  const chunks = [];
+  const offsets = [];
+  let pos = 0;
+  const push = (d) => { const u = typeof d === 'string' ? enc.encode(d) : d; chunks.push(u); pos += u.length; };
+  const startObj = (id) => { offsets[id] = pos; push(`${id} 0 obj\n`); };
+
+  const n = canvases.length;
+  // 物件編號：1 目錄、2 頁面樹、之後每頁 3 個物件（page, content, image）
+  push('%PDF-1.4\n');
+  startObj(1); push('<< /Type /Catalog /Pages 2 0 R >>\nendobj\n');
+  const kids = [];
+  for (let i = 0; i < n; i++) kids.push(`${3 + i * 3} 0 R`);
+  startObj(2); push(`<< /Type /Pages /Kids [${kids.join(' ')}] /Count ${n} >>\nendobj\n`);
+
+  canvases.forEach((c, i) => {
+    const pageId = 3 + i * 3, contId = pageId + 1, imgId = pageId + 2;
+    const b64 = c.toDataURL('image/jpeg', 0.92).split(',')[1];
+    const bin = atob(b64);
+    const jpg = new Uint8Array(bin.length);
+    for (let k = 0; k < bin.length; k++) jpg[k] = bin.charCodeAt(k);
+
+    startObj(pageId);
+    push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PWpt} ${PHpt}] /Resources << /XObject << /Im0 ${imgId} 0 R >> >> /Contents ${contId} 0 R >>\nendobj\n`);
+    const content = `q ${PWpt} 0 0 ${PHpt} 0 0 cm /Im0 Do Q`;
+    startObj(contId);
+    push(`<< /Length ${content.length} >>\nstream\n${content}\nendstream\nendobj\n`);
+    startObj(imgId);
+    push(`<< /Type /XObject /Subtype /Image /Width ${c.width} /Height ${c.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpg.length} >>\nstream\n`);
+    push(jpg);
+    push('\nendstream\nendobj\n');
+  });
+
+  const total = 3 + n * 3;
+  const xrefPos = pos;
+  let xref = `xref\n0 ${total}\n0000000000 65535 f \n`;
+  for (let id = 1; id < total; id++) xref += String(offsets[id]).padStart(10, '0') + ' 00000 n \n';
+  push(xref);
+  push(`trailer\n<< /Size ${total} /Root 1 0 R >>\nstartxref\n${xrefPos}\n%%EOF`);
+  return new Blob(chunks, { type: 'application/pdf' });
 }
 
 function closePreview() { document.getElementById('preview-overlay').style.display = 'none'; }
@@ -1405,6 +1449,18 @@ function spawnParts(x,y,color) {
   for(let i=0;i<18;i++){const a=rnd(0,Math.PI*2),s=rnd(3,8);particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,color,life:1,r:rnd(3,9)});}
 }
 
+const MISS_PENALTY = 5; // 沒射中氣球／少一顆心 各扣的分數
+function penalizeScore(x, y, reason) {
+  if (!game.running) return;
+  const before = game.score;
+  game.score = Math.max(0, game.score - MISS_PENALTY);
+  const lost = before - game.score;
+  document.getElementById('sc-el').textContent = game.score;
+  if (lost > 0) {
+    addFloat(x, y, '-' + lost + '分', '#FF6B6B');
+    addLog('esc', `${reason} -${lost}分`);
+  }
+}
 function addFloat(x,y,t,c) { floats.push({x,y,text:t,color:c||'#fff',life:1}); }
 
 function showLiveLearning(wd) {
@@ -1442,7 +1498,13 @@ function update(dt) {
   const sr=Math.max(12, (60/cfg.balloonsPerSecond)*(cfg.spawnRate/55)-(cfg.timeLimit-game.timeLeft)*.5);
   if(game.spawnAcc>sr){spawnBalloon();game.spawnAcc=0;}
   darts.forEach(d=>{d.trail.push({x:d.x,y:d.y});if(d.trail.length>9)d.trail.shift();d.x+=d.vx*dt;d.y+=d.vy*dt;});
-  darts=darts.filter(d=>!d.hit&&d.y>-40&&d.x>-40&&d.x<W+40);
+  darts.forEach(d=>{
+    if(!d.hit&&!d.missed&&(d.y<=-40||d.y>=H+40||d.x<=-40||d.x>=W+40)){
+      d.missed=true;
+      penalizeScore(Math.max(30,Math.min(W-30,d.x)),Math.max(40,Math.min(H-40,d.y)),'飛鏢落空');
+    }
+  });
+  darts=darts.filter(d=>!d.hit&&!d.missed);
   balloons.forEach(b=>{
     if(b.pop) { b.popT+=dt; return; }
     b.y+=b.vy*dt;b.x+=b.vx*dt;b.wobble+=.05*dt;
@@ -1450,6 +1512,7 @@ function update(dt) {
     if(!b.escaped&&b.y<-b.r-10){
       b.escaped=true;game.lives--;updLives();
       addFloat(b.x,30,'-1 ❤','#FF6B6B');
+      penalizeScore(b.x,60,'氣球逃脫扣分');
       stats.esc++; 
       currentSessionMissed.add(b.word.word);
       updStats();
@@ -1641,4 +1704,6 @@ draw();
 </script>
 </body>
 </html>
+
+
 
