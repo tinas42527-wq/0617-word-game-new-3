@@ -56,13 +56,18 @@ canvas{display:block;width:100%;height:100%}
   position: absolute; top: 16px; right: 16px; width: 240px; zoom: var(--ll-scale,1);
   background: rgba(8, 6, 30, 0.95); border: 3px solid #FFD700; border-radius: 12px;
   padding: 16px; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,0.6);
-  display: none; z-index: 40; pointer-events: none; animation: slideIn 0.3s ease-out;
+  display: none; z-index: 40; pointer-events: auto; animation: slideIn 0.3s ease-out;
 }
 .ll-title { font-size: 12px; color: #FFD700; letter-spacing: 1px; margin-bottom: 4px; font-weight: 700; }
 .ll-emoji { font-size: 56px; line-height: 1; margin: 8px 0; }
 .ll-word { font-size: 26px; font-weight: 900; color: #fff; }
 .ll-tip { font-size: 11px; color: #aaa; margin-top: 6px; border-top: 1px dashed rgba(255,255,255,0.2); padding-top: 6px; }
-.ll-anykey { font-size: 12px; color: #FF6B6B; font-weight: 900; margin-top: 8px; animation: blink 1s infinite; }
+.ll-judge { display:flex; gap:8px; margin-top:10px; }
+.ll-judge button { flex:1; font-family:'Nunito',sans-serif; font-size:14px; font-weight:900; padding:10px 6px; border:none; border-radius:10px; cursor:pointer; color:#fff; transition:transform .12s; }
+.ll-judge button:hover { transform:scale(1.06); }
+.ll-judge .ok { background:#2E9E5B; }
+.ll-judge .ng { background:#D9534F; }
+.ll-keyhint { font-size:11px; color:#888; margin-top:6px; }
 
 @keyframes slideIn { from { transform: translateX(30px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 @keyframes blink { 50% { opacity: 0.3; } }
@@ -250,11 +255,15 @@ input[type=checkbox].adm-box-cb {
       </div>
       
       <div id="live-learning-box">
-        <div class="ll-title">✨ 擊中詞彙 ✨</div>
+        <div class="ll-title">✨ 請打出這個手語 ✨</div>
         <div class="ll-emoji" id="ll-em">🍎</div>
         <div class="ll-word" id="ll-wd">蘋果</div>
-        <div class="ll-tip">請一邊看著字卡，一邊試著比出此手語！</div>
-        <div class="ll-anykey">👉 按「鍵盤任意鍵」或「滑鼠點擊」繼續</div>
+        <div class="ll-tip">打對加分；打錯遊戲照常繼續，但這題不加分。</div>
+        <div class="ll-judge">
+          <button class="ok" onclick="judgeSign(true)">✔ 打對了</button>
+          <button class="ng" onclick="judgeSign(false)">✘ 打錯了</button>
+        </div>
+        <div class="ll-keyhint">快捷鍵：Y／Enter＝打對　N／Esc＝打錯</div>
       </div>
 
       <div id="ov">
@@ -1294,7 +1303,13 @@ function flipAllCards(shouldHideText) {
 
 document.addEventListener('keydown', e => {
   if (document.getElementById('admin-page').classList.contains('active')) return;
-  if (game.running && isHitPaused) { e.preventDefault(); resumeFromHit(); return; }
+  if (game.running && isHitPaused) {
+    e.preventDefault();
+    const k = e.key.toLowerCase();
+    if (k === 'y' || k === 'enter') judgeSign(true);
+    else if (k === 'n' || k === 'escape') judgeSign(false);
+    return;
+  }
   keys[e.key] = true;
   if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown',' '].includes(e.key)) e.preventDefault();
 });
@@ -1302,7 +1317,7 @@ document.addEventListener('keyup', e => { keys[e.key] = false; });
 
 cv.addEventListener('mousedown', e => {
   if (!game.running) return;
-  if (isHitPaused) { e.preventDefault(); resumeFromHit(); return; }
+  if (isHitPaused) { e.preventDefault(); return; }
   if (cfg.paused) return; 
   const r = cv.getBoundingClientRect();
   fireDart((e.clientX - r.left) * (W / r.width), (e.clientY - r.top) * (H / r.height));
@@ -1311,11 +1326,12 @@ cv.addEventListener('mousedown', e => {
 function rnd(a,b) { return Math.random()*(b-a)+a; }
 
 function startGame() {
+  pendingHit = null;
   resize(); // 核心修正：啟動時強制重新測量畫布大小，避免抓到 0x0 寬高
   
   monkey.x = W/2; monkey.y = H - 65; monkey.arm = 0; monkey.shootT = 0;
   balloons=[]; darts=[]; particles=[]; floats=[];
-  game.score=0; game.combo=1; game.comboT=0;
+  game.score=0; game.combo=0; game.comboT=0;
   game.lives = cfg.maxLives; game.timeLeft = cfg.timeLimit; game.spawnAcc=0;
   game.running=true; game.over=false; cfg.paused = false; isHitPaused = false;
   
@@ -1365,7 +1381,7 @@ function endGame() {
     const missedDetails = ALL_WORDS.filter(w => currentSessionMissed.has(w.word));
     reviewHtml = `
       <div class="review-container">
-        <div class="review-title">⚠️ 本局未能掌握的手語弱點詞彙：</div>
+        <div class="review-title">⚠️ 本局漏掉或打錯的手語詞彙：</div>
         <div class="review-list">
           ${missedDetails.map(w => `${w.emoji} <b>${w.word}</b>`).join(' &nbsp;|&nbsp; ')}
         </div>
@@ -1373,7 +1389,7 @@ function endGame() {
       <button class="gbtn" style="background:#FF6B6B; color:#fff; font-size:15px; padding:10px 24px; margin-bottom:10px;" onclick="startWeakness特訓()">🎯 開啟【弱點加強特訓關卡】</button>
     `;
   } else {
-    reviewHtml = `<p style="color:#4CAF50; font-weight:700; margin:15px 0;">🎉 太完美了！你擊中了所有出現的氣球！</p>`;
+    reviewHtml = `<p style="color:#4CAF50; font-weight:700; margin:15px 0;">🎉 太完美了！每個手語都打對了！</p>`;
   }
 
   ov.innerHTML = `
@@ -1472,11 +1488,35 @@ function showLiveLearning(wd) {
   isHitPaused = true; 
 }
 
+let pendingHit = null;
+function judgeSign(correct) {
+  if (!isHitPaused || !pendingHit) return;
+  const { word, x, y } = pendingHit;
+  pendingHit = null;
+  if (correct) {
+    game.combo = Math.min(game.combo + 1, 12); game.comboT = 140;
+    const pts = word.points * game.combo;
+    game.score += pts;
+    document.getElementById('sc-el').textContent = game.score;
+    const ce = document.getElementById('combo-el');
+    ce.textContent = 'x' + game.combo; ce.style.display = game.combo > 1 ? 'block' : 'none';
+    addFloat(x, y, (game.combo > 1 ? `×${game.combo} ` : '') + '+' + pts, game.combo > 4 ? '#FFD700' : '#fff');
+    if (isWeaknessMode && currentSessionMissed.has(word.word)) currentSessionMissed.delete(word.word);
+    addLog('hit', `「${word.word}」${word.emoji} 手語正確 +${pts}分${game.combo > 1 ? ' 連擊×' + game.combo : ''}`);
+  } else {
+    game.combo = 0; game.comboT = 0;
+    document.getElementById('combo-el').style.display = 'none';
+    addFloat(x, y, '手語打錯 +0', '#FF6B6B');
+    currentSessionMissed.add(word.word);
+    addLog('esc', `「${word.word}」手語打錯，本題不加分`);
+  }
+  resumeFromHit();
+}
+
 function resumeFromHit() {
   isHitPaused = false; 
   document.getElementById('live-learning-box').style.display = 'none';
   for (let key in keys) { keys[key] = false; }
-  addLog('sys', '手語學習完成，遊戲繼續！');
 }
 
 function update(dt) {
@@ -1493,7 +1533,7 @@ function update(dt) {
   if(ml||mr||mu||md){monkey.arm+=0.13*dt*monkey.armDir;if(Math.abs(monkey.arm)>.35)monkey.armDir*=-1;}
   else monkey.arm*=.88;
   if(monkey.shootT>0)monkey.shootT-=dt;
-  if(game.comboT>0){game.comboT-=dt;if(game.comboT<=0){game.combo=1;document.getElementById('combo-el').style.display='none';}}
+  if(game.comboT>0){game.comboT-=dt;if(game.comboT<=0){game.combo=0;document.getElementById('combo-el').style.display='none';}}
   game.spawnAcc+=dt;
   const sr=Math.max(12, (60/cfg.balloonsPerSecond)*(cfg.spawnRate/55)-(cfg.timeLimit-game.timeLeft)*.5);
   if(game.spawnAcc>sr){spawnBalloon();game.spawnAcc=0;}
@@ -1501,7 +1541,10 @@ function update(dt) {
   darts.forEach(d=>{
     if(!d.hit&&!d.missed&&(d.y<=-40||d.y>=H+40||d.x<=-40||d.x>=W+40)){
       d.missed=true;
-      penalizeScore(Math.max(30,Math.min(W-30,d.x)),Math.max(40,Math.min(H-40,d.y)),'飛鏢落空');
+      game.lives--;updLives();
+      addFloat(Math.max(30,Math.min(W-30,d.x)),Math.max(40,Math.min(H-40,d.y)),'-1 ❤','#FF6B6B');
+      addLog('esc',`飛鏢落空，剩餘 ${game.lives} 命`);
+      if(game.lives<=0&&game.running)endGame();
     }
   });
   darts=darts.filter(d=>!d.hit&&!d.missed);
@@ -1524,17 +1567,10 @@ function update(dt) {
       if(b.y < H * 0.74 && Math.hypot(d.x-b.x,d.y-b.y)<b.r+4){
         b.pop=true;d.hit=true;
         spawnParts(b.x,b.y,b.color);
-        game.combo=Math.min(game.combo+1,12);game.comboT=140;
-        const pts=b.word.points*game.combo;
-        game.score+=pts;
-        document.getElementById('sc-el').textContent=game.score;
-        const ce=document.getElementById('combo-el');
-        ce.textContent='x'+game.combo;ce.style.display=game.combo>1?'block':'none';
-        addFloat(b.x,b.y-b.r-8,(game.combo>1?`×${game.combo} `:'')+'+'+pts,game.combo>4?'#FFD700':'#fff');
+        pendingHit={word:b.word,x:b.x,y:b.y-b.r-8};
         showLiveLearning(b.word);
-        if(isWeaknessMode && currentSessionMissed.has(b.word.word)) { currentSessionMissed.delete(b.word.word); }
         stats.hits++;updStats();
-        addLog('hit',`「${b.word.word}」${b.word.emoji} +${pts}分${game.combo>1?' 連擊×'+game.combo:''}`);
+        addLog('hit',`擊中「${b.word.word}」${b.word.emoji}，等待打手語判定…`);
       }
     });
   });
@@ -1552,9 +1588,9 @@ function draw() {
   if(isHitPaused && game.running){
     ctx.fillStyle='rgba(8,6,30,.4)';ctx.fillRect(0,0,W,H);
     ctx.fillStyle='#FFD700';ctx.font='900 24px Nunito,sans-serif';ctx.shadowColor='rgba(0,0,0,0.6)';ctx.shadowBlur=4;ctx.textAlign='center';ctx.textBaseline='middle';
-    ctx.fillText('✨ 請練習此手語 ✨',W/2,H/2 - 20);
+    ctx.fillText('✨ 請打出氣球上的手語 ✨',W/2,H/2 - 20);
     ctx.fillStyle='#FFF';ctx.font='700 16px Nunito,sans-serif';
-    ctx.fillText('請按鍵盤「任意鍵」或「點擊滑鼠」繼續！',W/2,H/2 + 20);
+    ctx.fillText('打對請按 Y，打錯請按 N（或點右側按鈕）',W/2,H/2 + 20);
     ctx.shadowBlur=0; 
   }
   else if(cfg.paused && game.running){
