@@ -1310,10 +1310,30 @@ document.addEventListener('keydown', e => {
     else if (k === 'n' || k === 'escape') judgeSign(false);
     return;
   }
+  if (e.key === ' ' && game.running && !cfg.paused) {
+    if (!e.repeat) fireAtMouse();
+    e.preventDefault();
+    return;
+  }
   keys[e.key] = true;
   if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown',' '].includes(e.key)) e.preventDefault();
 });
 document.addEventListener('keyup', e => { keys[e.key] = false; });
+
+let mouseX = null, mouseY = null;
+cv.addEventListener('mousemove', e => {
+  const r = cv.getBoundingClientRect();
+  mouseX = (e.clientX - r.left) * (W / r.width);
+  mouseY = (e.clientY - r.top) * (H / r.height);
+});
+function fireAtMouse() {
+  if (mouseX === null) { fireDart(monkey.x + monkey.facing*56, -100); return; } // 尚未移動滑鼠：朝正上方
+  let tx = mouseX, ty = mouseY;
+  for (const b of balloons) { // 滑鼠停在氣球上：直接瞄準氣球中心
+    if (!b.pop && Math.hypot(mouseX - b.x, mouseY - b.y) < b.r + 10) { tx = b.x; ty = b.y; break; }
+  }
+  fireDart(tx, ty);
+}
 
 cv.addEventListener('mousedown', e => {
   if (!game.running) return;
@@ -1448,7 +1468,7 @@ function fireDart(tx, ty) {
   const ox = monkey.x + monkey.facing*56, oy = monkey.y - 56;
   const dx = tx-ox, dy = ty-oy, len = Math.sqrt(dx*dx+dy*dy)||1;
   darts.push({x:ox,y:oy,vx:dx/len*20,vy:dy/len*20,trail:[],hit:false});
-  monkey.facing = dx>0?1:-1; monkey.shootT = 18;
+  if(dx!==0) monkey.facing = dx>0?1:-1; monkey.shootT = 18;
 }
 
 function spawnBalloon() {
@@ -1555,7 +1575,6 @@ function update(dt) {
     if(!b.escaped&&b.y<-b.r-10){
       b.escaped=true;game.lives--;updLives();
       addFloat(b.x,30,'-1 ❤','#FF6B6B');
-      penalizeScore(b.x,60,'氣球逃脫扣分');
       stats.esc++; 
       currentSessionMissed.add(b.word.word);
       updStats();
